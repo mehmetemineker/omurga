@@ -57,6 +57,7 @@ dependencies:
     mode: project
     database: blog
     user: blog
+    passwordSecret: database-password
 
   redis:
     type: redis
@@ -90,4 +91,3 @@ alerts:
     - service-unhealthy
     - backup-failed
     - disk-critical
-

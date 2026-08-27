@@ -132,6 +132,10 @@ The following foundation is implemented:
   Docker, Docker Compose, Docker and Caddy systemd services, reboot requirements,
   and disk usage
 - structured JSON output and doctor exit codes
+- project scaffold generation and strict environment overlays
+- deterministic Docker Compose and Caddy artifact rendering
+- loopback-only gateway port publishing
+- project-scoped PostgreSQL and Redis Compose services
 
 The installer refuses to remove conflicting distribution Docker packages unless
 `--replace-conflicting-docker` is explicitly provided. It does not use Docker's
@@ -142,3 +146,7 @@ The installation contracts follow the official
 [Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/) and
 [Caddy Debian/Ubuntu package](https://caddyserver.com/docs/install#debian-ubuntu-raspbian)
 documentation.
+
+Project rendering currently generates artifacts without changing Docker or
+Caddy runtime state. Persistent SQLite port allocation and the deploy, status,
+logs, stop, and delete lifecycle commands are the next implementation milestone.

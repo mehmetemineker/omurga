@@ -10,11 +10,12 @@ import (
 )
 
 type options struct {
-	host   string
-	json   bool
-	quiet  bool
-	dryRun bool
-	yes    bool
+	host        string
+	environment string
+	json        bool
+	quiet       bool
+	dryRun      bool
+	yes         bool
 }
 
 func Execute() error {
@@ -38,6 +39,7 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	cmd.PersistentFlags().StringVar(&opts.host, "host", "local", "host on which to run the operation")
+	cmd.PersistentFlags().StringVar(&opts.environment, "env", "", "project environment overlay")
 	cmd.PersistentFlags().BoolVar(&opts.json, "json", false, "write output as JSON")
 	cmd.PersistentFlags().BoolVarP(&opts.quiet, "quiet", "q", false, "suppress successful output")
 	cmd.PersistentFlags().BoolVar(&opts.dryRun, "dry-run", false, "show the plan without making changes")

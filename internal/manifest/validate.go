@@ -55,6 +55,9 @@ func Validate(project Project) error {
 		if service.PullPolicy != "" && service.PullPolicy != "always" && service.PullPolicy != "if-not-present" && service.PullPolicy != "never" {
 			add(path+".pullPolicy", "must be always, if-not-present, or never")
 		}
+		if service.Restart != "" && service.Restart != "no" && service.Restart != "always" && service.Restart != "on-failure" && service.Restart != "unless-stopped" {
+			add(path+".restart", "must be no, always, on-failure, or unless-stopped")
+		}
 
 		exposed := make(map[int]struct{}, len(service.Expose))
 		for i, port := range service.Expose {
@@ -130,6 +133,9 @@ func Validate(project Project) error {
 	for _, name := range dependencyNames {
 		dependency := project.Dependencies[name]
 		path := "dependencies." + name
+		if _, conflicts := project.Services[name]; conflicts {
+			add(path, "dependency name conflicts with a service name")
+		}
 		if !identifierPattern.MatchString(name) {
 			add(path, "dependency name must contain only lowercase letters, digits, and hyphens")
 		}
@@ -151,6 +157,17 @@ func Validate(project Project) error {
 		}
 		if dependency.Type == "redis" && dependency.Persistence != "" && dependency.Persistence != "aof" && dependency.Persistence != "rdb" && dependency.Persistence != "none" {
 			add(path+".persistence", "must be aof, rdb, or none")
+		}
+		if dependency.Type == "postgres" && mode == "project" {
+			if dependency.Database == "" {
+				add(path+".database", "database is required for a project PostgreSQL instance")
+			}
+			if dependency.User == "" {
+				add(path+".user", "user is required for a project PostgreSQL instance")
+			}
+			if !identifierPattern.MatchString(dependency.PasswordSecret) {
+				add(path+".passwordSecret", "a valid passwordSecret is required for a project PostgreSQL instance")
+			}
 		}
 	}
 

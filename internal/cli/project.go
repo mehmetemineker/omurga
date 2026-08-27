@@ -7,11 +7,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"omurga/internal/manifest"
+	projectruntime "omurga/internal/project"
 )
 
 func newProjectCommand(opts *options) *cobra.Command {
 	cmd := newGroupCommand("project", "Manage Docker projects",
-		pending("create", "Create a project manifest"),
+		newProjectCreateCommand(opts),
+		newProjectRenderCommand(opts),
 		pending("list", "List projects"),
 		pending("show", "Show project details"),
 		pending("deploy", "Reconcile a project to its desired state"),
@@ -27,8 +29,6 @@ func newProjectCommand(opts *options) *cobra.Command {
 }
 
 func newProjectValidateCommand(opts *options) *cobra.Command {
-	var environment string
-
 	cmd := &cobra.Command{
 		Use:   "validate [project-directory-or-manifest]",
 		Short: "Validate a project manifest and merged environment overlay",
@@ -39,7 +39,7 @@ func newProjectValidateCommand(opts *options) *cobra.Command {
 				path = args[0]
 			}
 
-			loaded, err := manifest.Load(path, environment)
+			loaded, err := manifest.Load(path, opts.environment)
 			if err != nil {
 				return err
 			}
@@ -67,6 +67,101 @@ func newProjectValidateCommand(opts *options) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&environment, "env", "", "environment overlay to merge")
+	return cmd
+}
+
+func newProjectCreateCommand(opts *options) *cobra.Command {
+	var parent string
+	cmd := &cobra.Command{
+		Use:   "create [name]",
+		Short: "Create a project manifest scaffold",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := projectruntime.Create(args[0], parent, opts.dryRun)
+			if err != nil {
+				return err
+			}
+			if opts.quiet {
+				return nil
+			}
+			if opts.json {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+			}
+			action := "created"
+			if result.DryRun {
+				action = "would create"
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s project %s at %s\n", action, result.Name, result.Directory)
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&parent, "directory", ".", "parent directory for the new project")
+	return cmd
+}
+
+func newProjectRenderCommand(opts *options) *cobra.Command {
+	var kind string
+	var output string
+	cmd := &cobra.Command{
+		Use:   "render [project-directory-or-manifest]",
+		Short: "Render the generated Compose or Caddy configuration",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			manifestPath := "."
+			if len(args) == 1 {
+				manifestPath = args[0]
+			}
+			if kind != "compose" && kind != "caddy" {
+				return fmt.Errorf("kind must be compose or caddy")
+			}
+
+			loaded, err := manifest.Load(manifestPath, opts.environment)
+			if err != nil {
+				return err
+			}
+			artifacts, err := projectruntime.Generate(loaded.Project, projectruntime.DefaultRenderOptions(loaded.Project, loaded.Environment))
+			if err != nil {
+				return err
+			}
+			content := artifacts.Compose
+			if kind == "caddy" {
+				content = artifacts.Caddy
+			}
+
+			if opts.json {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(struct {
+					Name        string         `json:"name"`
+					Environment string         `json:"environment,omitempty"`
+					Kind        string         `json:"kind"`
+					Content     string         `json:"content"`
+					Ports       map[string]int `json:"ports"`
+				}{loaded.Project.Name, loaded.Environment, kind, string(content), artifacts.Ports})
+			}
+			if output == "" || output == "-" {
+				if opts.quiet {
+					return nil
+				}
+				_, err := cmd.OutOrStdout().Write(content)
+				return err
+			}
+			if opts.dryRun {
+				if !opts.quiet {
+					_, err := fmt.Fprintf(cmd.OutOrStdout(), "would write %s configuration to %s\n", kind, output)
+					return err
+				}
+				return nil
+			}
+			if err := projectruntime.WriteArtifact(output, content, 0o640); err != nil {
+				return err
+			}
+			if !opts.quiet {
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "wrote %s configuration to %s\n", kind, output)
+				return err
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&kind, "kind", "compose", "artifact kind: compose or caddy")
+	cmd.Flags().StringVarP(&output, "output", "o", "-", "output path or - for stdout")
 	return cmd
 }

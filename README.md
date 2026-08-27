@@ -30,6 +30,20 @@ go run ./cmd/omurga project validate ./examples/basic --env production
 go run ./cmd/omurga --json project validate ./examples/basic --env production
 ```
 
+Create a project scaffold and render runtime artifacts:
+
+```bash
+omurga project create demo
+omurga project validate ./demo --env production
+omurga project render ./demo --env production
+omurga project render ./demo --env production --kind caddy
+omurga project render ./demo --env production --output ./compose.generated.yaml
+```
+
+Rendered gateway ports bind to `127.0.0.1` only. Caddy is the public entry
+point. Port previews are deterministic, but persistent collision-safe allocation
+will be performed by the deployment state store in the lifecycle milestone.
+
 On a supported Ubuntu host:
 
 ```bash
@@ -55,4 +69,6 @@ Docker packages that conflict with Docker CE. Inspect the dry-run output and use
 `--replace-conflicting-docker` explicitly when replacement is intended.
 
 See [docs/architecture-v1.md](docs/architecture-v1.md) for architectural decisions
-and delivery milestones.
+and delivery milestones. See
+[docs/project-manifest-v1.md](docs/project-manifest-v1.md) for the current
+manifest and rendering contract.

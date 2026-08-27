@@ -14,6 +14,7 @@ type Project struct {
 type Service struct {
 	Image       string            `yaml:"image" json:"image"`
 	PullPolicy  string            `yaml:"pullPolicy,omitempty" json:"pullPolicy,omitempty"`
+	Restart     string            `yaml:"restart,omitempty" json:"restart,omitempty"`
 	Command     []string          `yaml:"command,omitempty" json:"command,omitempty"`
 	Expose      []int             `yaml:"expose,omitempty" json:"expose,omitempty"`
 	Environment map[string]string `yaml:"environment,omitempty" json:"environment,omitempty"`
@@ -75,6 +76,7 @@ type Dependency struct {
 	Instance       string `yaml:"instance,omitempty" json:"instance,omitempty"`
 	Database       string `yaml:"database,omitempty" json:"database,omitempty"`
 	User           string `yaml:"user,omitempty" json:"user,omitempty"`
+	PasswordSecret string `yaml:"passwordSecret,omitempty" json:"passwordSecret,omitempty"`
 	Persistence    string `yaml:"persistence,omitempty" json:"persistence,omitempty"`
 	MaxMemory      string `yaml:"maxMemory,omitempty" json:"maxMemory,omitempty"`
 	EvictionPolicy string `yaml:"evictionPolicy,omitempty" json:"evictionPolicy,omitempty"`
