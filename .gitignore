@@ -1,0 +1,8 @@
+/omurga
+/omurga.exe
+/dist/
+/coverage.out
+/.idea/
+/.vscode/
+*.age
+

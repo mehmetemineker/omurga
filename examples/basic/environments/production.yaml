@@ -1,0 +1,21 @@
+host: production
+
+services:
+  app:
+    image: ghcr.io/example/blog:1.4.3
+
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: warning
+
+    resources:
+      cpus: "2.0"
+      memory: 1G
+
+gateway:
+  routes:
+    - domain: blog.example.com
+      service: app
+      port: 3000
+      https: true
+

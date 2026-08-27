@@ -1,0 +1,93 @@
+version: 1
+
+name: blog
+
+services:
+  app:
+    image: ghcr.io/example/blog:1.4.0
+    pullPolicy: if-not-present
+
+    expose:
+      - 3000
+
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: debug
+      DATABASE_PASSWORD_FILE: /run/secrets/database_password
+
+    secrets:
+      - name: database-password
+        target: /run/secrets/database_password
+        mode: "0400"
+        uid: 1000
+        gid: 1000
+
+    volumes:
+      - name: app-data
+        target: /app/data
+
+    resources:
+      cpus: "1.0"
+      memory: 512M
+      pids: 200
+
+    logging:
+      driver: json-file
+      maxSize: 100M
+      maxFiles: 5
+
+    healthcheck:
+      command: [CMD, wget, --spider, http://localhost:3000/health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      startPeriod: 20s
+
+gateway:
+  routes:
+    - domain: blog.localhost
+      service: app
+      port: 3000
+      https: false
+
+dependencies:
+  postgres:
+    type: postgres
+    version: "16"
+    mode: project
+    database: blog
+    user: blog
+
+  redis:
+    type: redis
+    version: "7"
+    mode: project
+    persistence: aof
+    maxMemory: 256M
+    evictionPolicy: allkeys-lru
+
+backup:
+  enabled: true
+  schedule: "03:00"
+  destination: production-s3
+
+  retention:
+    daily: 7
+    weekly: 4
+    monthly: 6
+
+  include:
+    volumes:
+      - app-data
+    postgres:
+      - postgres
+    redis:
+      - redis
+
+alerts:
+  on:
+    - deploy-failed
+    - service-unhealthy
+    - backup-failed
+    - disk-critical
+
