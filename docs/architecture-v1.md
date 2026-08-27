@@ -112,8 +112,8 @@ both human-readable and JSON output.
 
 1. CLI, configuration, output, and manifest validation
 2. Ubuntu bootstrap, APT, Docker, Caddy, and basic doctor checks
-3. Compose generation and the project lifecycle
-4. Gateway port allocation and the encrypted secret store
+3. Compose generation and persistent gateway port allocation
+4. The project lifecycle and the encrypted secret store
 5. PostgreSQL and Redis operations
 6. Restic backups, systemd timers, and alert channels
 7. Multi-host management over SSH
@@ -135,6 +135,8 @@ The following foundation is implemented:
 - project scaffold generation and strict environment overlays
 - deterministic Docker Compose and Caddy artifact rendering
 - loopback-only gateway port publishing
+- a versioned SQLite state database with read-only dry-run access
+- stable, transaction-safe gateway port allocation across all projects
 - project-scoped PostgreSQL and Redis Compose services
 
 The installer refuses to remove conflicting distribution Docker packages unless
@@ -147,6 +149,7 @@ The installation contracts follow the official
 [Caddy Debian/Ubuntu package](https://caddyserver.com/docs/install#debian-ubuntu-raspbian)
 documentation.
 
-Project rendering currently generates artifacts without changing Docker or
-Caddy runtime state. Persistent SQLite port allocation and the deploy, status,
-logs, stop, and delete lifecycle commands are the next implementation milestone.
+Project rendering currently generates artifacts without changing SQLite,
+Docker, or Caddy runtime state. The SQLite state layer is ready for deployment
+reconciliation. The deploy, status, logs, restart, stop, rollback, and delete
+lifecycle commands are the next implementation milestone.

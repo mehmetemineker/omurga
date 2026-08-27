@@ -2,7 +2,6 @@ package project
 
 import (
 	"fmt"
-	"hash/crc32"
 	"path"
 	"sort"
 	"strconv"
@@ -10,12 +9,13 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"omurga/internal/gateway"
 	"omurga/internal/manifest"
 )
 
 const (
-	GatewayPortStart = 20000
-	GatewayPortEnd   = 29999
+	GatewayPortStart = gateway.PortStart
+	GatewayPortEnd   = gateway.PortEnd
 )
 
 type RenderOptions struct {
@@ -32,10 +32,7 @@ type Artifacts struct {
 }
 
 func EnvironmentKey(environment string) string {
-	if environment == "" {
-		return "default"
-	}
-	return environment
+	return gateway.EnvironmentKey(environment)
 }
 
 func ComposeProjectName(projectName, environment string) string {
@@ -43,30 +40,33 @@ func ComposeProjectName(projectName, environment string) string {
 }
 
 func PortKey(service string, containerPort int) string {
-	return fmt.Sprintf("%s:%d", service, containerPort)
+	return gateway.Key(service, containerPort)
 }
 
 func PreviewPorts(project manifest.Project, environment string) map[string]int {
 	ports := make(map[string]int)
 	used := make(map[int]bool)
-	rangeSize := GatewayPortEnd - GatewayPortStart + 1
-	for _, route := range project.Gateway.Routes {
-		key := PortKey(route.Service, route.Port)
-		if _, exists := ports[key]; exists {
-			continue
+	targets, err := gateway.UniqueTargets(GatewayTargets(project))
+	if err != nil {
+		return ports
+	}
+	for _, target := range targets {
+		candidate, err := gateway.NextAvailable(gateway.Candidate(project.Name, environment, target), used)
+		if err != nil {
+			return ports
 		}
-		seed := project.Name + ":" + EnvironmentKey(environment) + ":" + key
-		candidate := GatewayPortStart + int(crc32.ChecksumIEEE([]byte(seed))%uint32(rangeSize))
-		for used[candidate] {
-			candidate++
-			if candidate > GatewayPortEnd {
-				candidate = GatewayPortStart
-			}
-		}
-		ports[key] = candidate
+		ports[gateway.Key(target.Service, target.ContainerPort)] = candidate
 		used[candidate] = true
 	}
 	return ports
+}
+
+func GatewayTargets(project manifest.Project) []gateway.Target {
+	targets := make([]gateway.Target, 0, len(project.Gateway.Routes))
+	for _, route := range project.Gateway.Routes {
+		targets = append(targets, gateway.Target{Service: route.Service, ContainerPort: route.Port})
+	}
+	return targets
 }
 
 func DefaultRenderOptions(project manifest.Project, environment string) RenderOptions {

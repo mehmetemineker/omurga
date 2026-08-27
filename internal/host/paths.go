@@ -16,6 +16,7 @@ type Paths struct {
 	Keys           string
 	CaddyProjects  string
 	StateRoot      string
+	StateDB        string
 	ProjectsState  string
 	BackupStaging  string
 	LogRoot        string
@@ -54,6 +55,7 @@ func DefaultPaths(root string) Paths {
 		Keys:           join("etc/omurga/keys"),
 		CaddyProjects:  join("etc/omurga/caddy/projects"),
 		StateRoot:      join("var/lib/omurga"),
+		StateDB:        join("var/lib/omurga/state.db"),
 		ProjectsState:  join("var/lib/omurga/projects"),
 		BackupStaging:  join("var/backups/omurga/staging"),
 		LogRoot:        join("var/log/omurga"),

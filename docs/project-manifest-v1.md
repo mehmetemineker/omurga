@@ -33,8 +33,9 @@ proxies the public domain to that loopback port. A route with `https: false`
 uses an explicit `http://` Caddy site address; HTTPS is otherwise the default.
 
 Preview ports are deterministic values in the `20000-29999` range. Preview
-ports are intended for rendering only. Deployment will use SQLite to preserve
-assignments and avoid collisions across projects.
+ports are intended for rendering only and do not create operational state.
+Deployment uses SQLite to preserve stable assignments and avoid collisions
+across projects. Dry-run planning reads existing assignments without writing.
 
 ## Secrets
 

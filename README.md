@@ -41,8 +41,10 @@ omurga project render ./demo --env production --output ./compose.generated.yaml
 ```
 
 Rendered gateway ports bind to `127.0.0.1` only. Caddy is the public entry
-point. Port previews are deterministic, but persistent collision-safe allocation
-will be performed by the deployment state store in the lifecycle milestone.
+point. `project render` uses deterministic preview ports and does not create
+operational state. The deployment resolver uses SQLite for stable,
+collision-safe port allocation across all managed projects. Dry-run planning
+can inspect an existing database through a read-only connection.
 
 On a supported Ubuntu host:
 
@@ -71,4 +73,5 @@ Docker packages that conflict with Docker CE. Inspect the dry-run output and use
 See [docs/architecture-v1.md](docs/architecture-v1.md) for architectural decisions
 and delivery milestones. See
 [docs/project-manifest-v1.md](docs/project-manifest-v1.md) for the current
-manifest and rendering contract.
+manifest and rendering contract, and [docs/state-v1.md](docs/state-v1.md) for
+the operational state contract.
