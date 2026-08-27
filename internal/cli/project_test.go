@@ -35,4 +35,28 @@ func TestProjectCreateAndRenderCommands(t *testing.T) {
 	if !strings.Contains(renderOutput.String(), "services:") || !strings.Contains(renderOutput.String(), "127.0.0.1") {
 		t.Fatalf("unexpected render output:\n%s", renderOutput.String())
 	}
+
+	deployOutput := &bytes.Buffer{}
+	deployCommand := NewRootCommand()
+	deployCommand.SetOut(deployOutput)
+	deployCommand.SetErr(deployOutput)
+	deployCommand.SetArgs([]string{"--env", "production", "--dry-run", "project", "deploy", projectDirectory})
+	if err := deployCommand.Execute(); err != nil {
+		t.Fatalf("project deploy dry-run error = %v", err)
+	}
+	if !strings.Contains(deployOutput.String(), "deployment plan") || !strings.Contains(deployOutput.String(), "--wait-timeout 120") {
+		t.Fatalf("unexpected deploy plan output:\n%s", deployOutput.String())
+	}
+
+	controlOutput := &bytes.Buffer{}
+	controlCommand := NewRootCommand()
+	controlCommand.SetOut(controlOutput)
+	controlCommand.SetErr(controlOutput)
+	controlCommand.SetArgs([]string{"--env", "production", "--dry-run", "project", "restart", projectDirectory})
+	if err := controlCommand.Execute(); err != nil {
+		t.Fatalf("project restart dry-run error = %v", err)
+	}
+	if !strings.Contains(controlOutput.String(), "docker compose") || !strings.Contains(controlOutput.String(), " restart") {
+		t.Fatalf("unexpected restart plan output:\n%s", controlOutput.String())
+	}
 }

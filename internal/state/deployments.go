@@ -1,0 +1,95 @@
+package state
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+)
+
+type Deployment struct {
+	Project      string `json:"project"`
+	Environment  string `json:"environment"`
+	Status       string `json:"status"`
+	Revision     string `json:"revision"`
+	ManifestPath string `json:"manifestPath"`
+	ComposePath  string `json:"composePath"`
+	CaddyPath    string `json:"caddyPath,omitempty"`
+	UpdatedAt    string `json:"updatedAt"`
+	LastError    string `json:"lastError,omitempty"`
+}
+
+func (s *Store) PutDeployment(ctx context.Context, deployment Deployment) error {
+	if s.readOnly {
+		return fmt.Errorf("cannot update a deployment using a read-only state database")
+	}
+	if deployment.Project == "" || deployment.Environment == "" {
+		return fmt.Errorf("deployment project and environment are required")
+	}
+	if deployment.Status == "" || deployment.Revision == "" || deployment.ManifestPath == "" || deployment.ComposePath == "" {
+		return fmt.Errorf("deployment status, revision, manifest path, and Compose path are required")
+	}
+	deployment.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO deployments (
+    project, environment, status, revision, manifest_path, compose_path, caddy_path, updated_at, last_error
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(project, environment) DO UPDATE SET
+    status = excluded.status,
+    revision = excluded.revision,
+    manifest_path = excluded.manifest_path,
+    compose_path = excluded.compose_path,
+    caddy_path = excluded.caddy_path,
+    updated_at = excluded.updated_at,
+    last_error = excluded.last_error
+`, deployment.Project, deployment.Environment, deployment.Status, deployment.Revision,
+		deployment.ManifestPath, deployment.ComposePath, deployment.CaddyPath, deployment.UpdatedAt, deployment.LastError)
+	if err != nil {
+		return fmt.Errorf("could not store deployment state: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) GetDeployment(ctx context.Context, project, environment string) (Deployment, bool, error) {
+	if s.version < 2 {
+		return Deployment{}, false, nil
+	}
+	var deployment Deployment
+	err := s.db.QueryRowContext(ctx, `
+SELECT project, environment, status, revision, manifest_path, compose_path, caddy_path, updated_at, last_error
+FROM deployments
+WHERE project = ? AND environment = ?
+`, project, environment).Scan(
+		&deployment.Project, &deployment.Environment, &deployment.Status, &deployment.Revision,
+		&deployment.ManifestPath, &deployment.ComposePath, &deployment.CaddyPath,
+		&deployment.UpdatedAt, &deployment.LastError,
+	)
+	if err == sql.ErrNoRows {
+		return Deployment{}, false, nil
+	}
+	if err != nil {
+		return Deployment{}, false, fmt.Errorf("could not read deployment state: %w", err)
+	}
+	return deployment, true, nil
+}
+
+func (s *Store) SetDeploymentStatus(ctx context.Context, project, environment, status, lastError string) error {
+	if s.readOnly {
+		return fmt.Errorf("cannot update a deployment using a read-only state database")
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE deployments SET status = ?, last_error = ?, updated_at = ?
+WHERE project = ? AND environment = ?
+`, status, lastError, time.Now().UTC().Format(time.RFC3339Nano), project, environment)
+	if err != nil {
+		return fmt.Errorf("could not update deployment status: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("could not inspect deployment status update: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("deployment %s/%s was not found", project, environment)
+	}
+	return nil
+}

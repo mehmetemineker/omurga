@@ -50,7 +50,7 @@ func Validate(project Project) error {
 			add(path, "service name must contain only lowercase letters, digits, and hyphens")
 		}
 		if strings.TrimSpace(service.Image) == "" {
-			add(path+".image", "image zorunlu")
+			add(path+".image", "image is required")
 		}
 		if service.PullPolicy != "" && service.PullPolicy != "always" && service.PullPolicy != "if-not-present" && service.PullPolicy != "never" {
 			add(path+".pullPolicy", "must be always, if-not-present, or never")
@@ -101,10 +101,10 @@ func Validate(project Project) error {
 		}
 
 		if service.Resources.PIDs < 0 {
-			add(path+".resources.pids", "negatif olamaz")
+			add(path+".resources.pids", "cannot be negative")
 		}
 		if service.Logging.MaxFiles < 0 {
-			add(path+".logging.maxFiles", "negatif olamaz")
+			add(path+".logging.maxFiles", "cannot be negative")
 		}
 	}
 
@@ -143,7 +143,7 @@ func Validate(project Project) error {
 			add(path+".type", "must be postgres or redis")
 		}
 		if strings.TrimSpace(dependency.Version) == "" {
-			add(path+".version", "version zorunlu")
+			add(path+".version", "version is required")
 		}
 		mode := dependency.Mode
 		if mode == "" {

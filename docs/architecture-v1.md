@@ -137,6 +137,9 @@ The following foundation is implemented:
 - loopback-only gateway port publishing
 - a versioned SQLite state database with read-only dry-run access
 - stable, transaction-safe gateway port allocation across all projects
+- project deploy, status, restart, and stop operations
+- Compose health waiting and pre-reload Caddy validation
+- automatic artifact and runtime rollback on deployment failure
 - project-scoped PostgreSQL and Redis Compose services
 
 The installer refuses to remove conflicting distribution Docker packages unless
@@ -149,7 +152,7 @@ The installation contracts follow the official
 [Caddy Debian/Ubuntu package](https://caddyserver.com/docs/install#debian-ubuntu-raspbian)
 documentation.
 
-Project rendering currently generates artifacts without changing SQLite,
-Docker, or Caddy runtime state. The SQLite state layer is ready for deployment
-reconciliation. The deploy, status, logs, restart, stop, rollback, and delete
-lifecycle commands are the next implementation milestone.
+Project rendering generates artifacts without changing SQLite, Docker, or Caddy
+runtime state. Deployment reconciliation, status, restart, and stop are
+implemented for the local host. Logs, explicit rollback, project deletion, and
+encrypted secret materialization are the next lifecycle milestones.

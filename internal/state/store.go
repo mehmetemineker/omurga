@@ -11,12 +11,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 type Store struct {
 	db       *sql.DB
 	path     string
 	readOnly bool
+	version  int
 }
 
 func Open(ctx context.Context, path string) (*Store, error) {
@@ -39,6 +40,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	store.version = schemaVersion
 	if err := os.Chmod(path, 0o600); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("could not secure state database: %w", err)
@@ -100,9 +102,10 @@ func (s *Store) validateSchema(ctx context.Context) error {
 	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return fmt.Errorf("could not read state database schema version: %w", err)
 	}
-	if version != schemaVersion {
-		return fmt.Errorf("state database schema version %d is not supported; expected version %d", version, schemaVersion)
+	if version < 1 || version > schemaVersion {
+		return fmt.Errorf("state database schema version %d is not supported", version)
 	}
+	s.version = version
 	return nil
 }
 
@@ -157,7 +160,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		return nil
 	}
 
-	if _, err := conn.ExecContext(ctx, `
+	if version == 0 {
+		if _, err := conn.ExecContext(ctx, `
 CREATE TABLE gateway_ports (
     project TEXT NOT NULL,
     environment TEXT NOT NULL,
@@ -170,7 +174,33 @@ CREATE TABLE gateway_ports (
 CREATE INDEX gateway_ports_project_idx ON gateway_ports (project, environment);
 PRAGMA user_version = 1;
 `); err != nil {
-		return fmt.Errorf("could not create state database schema: %w", err)
+			return fmt.Errorf("could not create state database schema version 1: %w", err)
+		}
+		version = 1
+	}
+	if version == 1 {
+		if _, err := conn.ExecContext(ctx, `
+CREATE TABLE deployments (
+    project TEXT NOT NULL,
+    environment TEXT NOT NULL,
+    status TEXT NOT NULL,
+    revision TEXT NOT NULL,
+    manifest_path TEXT NOT NULL,
+    compose_path TEXT NOT NULL,
+    caddy_path TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_error TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (project, environment)
+);
+CREATE INDEX deployments_status_idx ON deployments (status);
+PRAGMA user_version = 2;
+`); err != nil {
+			return fmt.Errorf("could not create state database schema version 2: %w", err)
+		}
+		version = 2
+	}
+	if version != schemaVersion {
+		return fmt.Errorf("could not migrate state database to schema version %d", schemaVersion)
 	}
 	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
 		return fmt.Errorf("could not commit state database schema: %w", err)

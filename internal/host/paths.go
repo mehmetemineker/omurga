@@ -29,6 +29,7 @@ type Paths struct {
 	DockerSource   string
 	CaddyKey       string
 	CaddySource    string
+	CaddyFile      string
 }
 
 type Directory struct {
@@ -68,6 +69,7 @@ func DefaultPaths(root string) Paths {
 		DockerSource:   join("etc/apt/sources.list.d/docker.sources"),
 		CaddyKey:       join("usr/share/keyrings/caddy-stable-archive-keyring.gpg"),
 		CaddySource:    join("etc/apt/sources.list.d/caddy-stable.list"),
+		CaddyFile:      join("etc/caddy/Caddyfile"),
 	}
 }
 

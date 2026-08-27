@@ -9,7 +9,7 @@ standalone render preview.
 
 - The database uses SQLite through a pure Go driver and does not require CGO.
 - Schema changes are controlled by `PRAGMA user_version`.
-- The current schema version is `1`.
+- The current schema version is `2`.
 - A database created by a newer Omurga schema is rejected.
 - The database file mode is `0600`.
 - WAL mode and a five-second busy timeout are enabled for normal access.
@@ -31,6 +31,17 @@ The `default` environment key represents a project without an environment
 overlay. Removing a route does not immediately release its assignment. This
 preserves stability across temporary manifest changes; explicit project cleanup
 will own release behavior in the lifecycle implementation.
+
+## Deployment records
+
+Schema version 2 stores one deployment record for each project and environment.
+The record includes its status, artifact revision, manifest path, Compose path,
+optional Caddy path, update time, and last operational error. Successful deploy,
+restart, and stop operations update this record.
+
+The artifact revision is a SHA-256 digest of the generated Compose and Caddy
+content. It identifies generated runtime configuration without storing secret
+values.
 
 ## Render and dry-run behavior
 

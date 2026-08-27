@@ -6,9 +6,9 @@ and health operations.
 
 The project is in early development. The `version: 1` project manifest
 validation layer, local host initialization, official Docker and Caddy package
-installation, APT updates, and basic doctor checks are currently available.
-Other commands expose the planned CLI contract and return an explicit error
-until implemented.
+installation, APT updates, basic doctor checks, persistent deployment state,
+and the initial project lifecycle are currently available. Commands that are
+still planned return an explicit error until implemented.
 
 ## Requirements
 
@@ -38,6 +38,7 @@ omurga project validate ./demo --env production
 omurga project render ./demo --env production
 omurga project render ./demo --env production --kind caddy
 omurga project render ./demo --env production --output ./compose.generated.yaml
+omurga --dry-run project deploy ./demo --env production
 ```
 
 Rendered gateway ports bind to `127.0.0.1` only. Caddy is the public entry
@@ -45,6 +46,25 @@ point. `project render` uses deterministic preview ports and does not create
 operational state. The deployment resolver uses SQLite for stable,
 collision-safe port allocation across all managed projects. Dry-run planning
 can inspect an existing database through a read-only connection.
+
+Deploy and operate a project on an initialized Ubuntu host:
+
+```bash
+sudo omurga project deploy ./demo --env production
+omurga project status ./demo --env production
+sudo omurga project restart ./demo --env production
+sudo omurga project stop ./demo --env production
+```
+
+Deploy validates Compose, starts containers with `--wait`, updates Caddy only
+after container health succeeds, validates the complete Caddy configuration,
+and reloads Caddy. Existing Compose and Caddy artifacts are restored when a
+health check or gateway validation fails.
+
+The encrypted secret command is not implemented yet. Until it is available,
+every required runtime secret must already exist at
+`/run/omurga/secrets/<project>/<environment>/<secret>` with no group or other
+permissions. Secret values are never written to generated Compose files.
 
 On a supported Ubuntu host:
 
@@ -74,4 +94,5 @@ See [docs/architecture-v1.md](docs/architecture-v1.md) for architectural decisio
 and delivery milestones. See
 [docs/project-manifest-v1.md](docs/project-manifest-v1.md) for the current
 manifest and rendering contract, and [docs/state-v1.md](docs/state-v1.md) for
-the operational state contract.
+the operational state contract. The deployment sequence and rollback rules are
+documented in [docs/project-lifecycle-v1.md](docs/project-lifecycle-v1.md).

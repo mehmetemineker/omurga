@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -223,5 +224,88 @@ func TestConcurrentStoresSerializeCollidingAllocations(t *testing.T) {
 	}
 	if firstResult.ports["app:3000"] == secondResult.ports["app:3000"] {
 		t.Fatalf("concurrent allocations collided: %#v %#v", firstResult.ports, secondResult.ports)
+	}
+}
+
+func TestDeploymentStateLifecycle(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+	deployment := Deployment{
+		Project: "demo", Environment: "production", Status: "running", Revision: "abc123",
+		ManifestPath: "/projects/demo/omurga.yaml", ComposePath: "/var/lib/omurga/projects/demo/production/compose.yaml",
+	}
+	if err := store.PutDeployment(ctx, deployment); err != nil {
+		t.Fatalf("PutDeployment() error = %v", err)
+	}
+	stored, exists, err := store.GetDeployment(ctx, "demo", "production")
+	if err != nil || !exists {
+		t.Fatalf("GetDeployment() = %#v, %v, %v", stored, exists, err)
+	}
+	if stored.Status != "running" || stored.UpdatedAt == "" {
+		t.Fatalf("unexpected deployment: %#v", stored)
+	}
+	if err := store.SetDeploymentStatus(ctx, "demo", "production", "stopped", ""); err != nil {
+		t.Fatalf("SetDeploymentStatus() error = %v", err)
+	}
+	stored, _, err = store.GetDeployment(ctx, "demo", "production")
+	if err != nil || stored.Status != "stopped" {
+		t.Fatalf("unexpected updated deployment: %#v, %v", stored, err)
+	}
+}
+
+func TestVersionOneDatabaseIsReadableAndMigratesOnWriteOpen(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "state.db")
+	store, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	if _, err := raw.Exec("DROP TABLE deployments; PRAGMA user_version = 1;"); err != nil {
+		raw.Close()
+		t.Fatalf("could not downgrade test database: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("raw Close() error = %v", err)
+	}
+
+	readOnly, err := OpenReadOnly(ctx, path)
+	if err != nil {
+		t.Fatalf("OpenReadOnly() error = %v", err)
+	}
+	if readOnly.version != 1 {
+		t.Fatalf("read-only schema version = %d, want 1", readOnly.version)
+	}
+	if _, exists, err := readOnly.GetDeployment(ctx, "demo", "production"); err != nil || exists {
+		t.Fatalf("GetDeployment() on v1 = %v, %v", exists, err)
+	}
+	if err := readOnly.Close(); err != nil {
+		t.Fatalf("read-only Close() error = %v", err)
+	}
+
+	migrated, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("migrating Open() error = %v", err)
+	}
+	defer migrated.Close()
+	if migrated.version != schemaVersion {
+		t.Fatalf("migrated schema version = %d, want %d", migrated.version, schemaVersion)
+	}
+	if err := migrated.PutDeployment(ctx, Deployment{
+		Project: "demo", Environment: "production", Status: "running", Revision: "abc",
+		ManifestPath: "/project/omurga.yaml", ComposePath: "/project/compose.yaml",
+	}); err != nil {
+		t.Fatalf("PutDeployment() after migration error = %v", err)
 	}
 }
