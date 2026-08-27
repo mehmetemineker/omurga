@@ -59,4 +59,34 @@ func TestProjectCreateAndRenderCommands(t *testing.T) {
 	if !strings.Contains(controlOutput.String(), "docker compose") || !strings.Contains(controlOutput.String(), " restart") {
 		t.Fatalf("unexpected restart plan output:\n%s", controlOutput.String())
 	}
+
+	logsOutput := &bytes.Buffer{}
+	logsCommand := NewRootCommand()
+	logsCommand.SetOut(logsOutput)
+	logsCommand.SetErr(logsOutput)
+	logsCommand.SetArgs([]string{"--env", "production", "--dry-run", "project", "logs", projectDirectory, "--follow", "--tail", "25", "--service", "app"})
+	if err := logsCommand.Execute(); err != nil {
+		t.Fatalf("project logs dry-run error = %v", err)
+	}
+	if !strings.Contains(logsOutput.String(), "logs --follow --tail 25 app") {
+		t.Fatalf("unexpected logs plan output:\n%s", logsOutput.String())
+	}
+
+	deleteOutput := &bytes.Buffer{}
+	deleteCommand := NewRootCommand()
+	deleteCommand.SetOut(deleteOutput)
+	deleteCommand.SetErr(deleteOutput)
+	deleteCommand.SetArgs([]string{"--env", "production", "--dry-run", "project", "delete", projectDirectory, "--purge-data"})
+	if err := deleteCommand.Execute(); err != nil {
+		t.Fatalf("project delete dry-run error = %v", err)
+	}
+	if !strings.Contains(deleteOutput.String(), "deletion plan") || !strings.Contains(deleteOutput.String(), "purge persistent project data") {
+		t.Fatalf("unexpected delete plan output:\n%s", deleteOutput.String())
+	}
+
+	unsafeDeleteCommand := NewRootCommand()
+	unsafeDeleteCommand.SetArgs([]string{"--env", "production", "project", "delete", projectDirectory, "--purge-data"})
+	if err := unsafeDeleteCommand.Execute(); err == nil || !strings.Contains(err.Error(), "--purge-data requires --yes") {
+		t.Fatalf("unsafe purge was not rejected: %v", err)
+	}
 }

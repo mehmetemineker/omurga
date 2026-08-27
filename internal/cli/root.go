@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
 
 	"github.com/spf13/cobra"
 
@@ -19,7 +22,9 @@ type options struct {
 }
 
 func Execute() error {
-	return NewRootCommand().Execute()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	return NewRootCommand().ExecuteContext(ctx)
 }
 
 func NewRootCommand() *cobra.Command {

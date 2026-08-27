@@ -51,15 +51,28 @@ Deploy and operate a project on an initialized Ubuntu host:
 
 ```bash
 sudo omurga project deploy ./demo --env production
-omurga project status ./demo --env production
+sudo omurga project status ./demo --env production
+sudo omurga project logs ./demo --env production --follow --tail 100
 sudo omurga project restart ./demo --env production
 sudo omurga project stop ./demo --env production
+sudo omurga project rollback ./demo --env production
+sudo omurga project delete ./demo --env production
 ```
 
 Deploy validates Compose, starts containers with `--wait`, updates Caddy only
 after container health succeeds, validates the complete Caddy configuration,
 and reloads Caddy. Existing Compose and Caddy artifacts are restored when a
 health check or gateway validation fails.
+
+Rollback switches the current and previous healthy artifacts, so running it
+again rolls forward to the configuration that was active before the rollback.
+Project deletion removes containers, generated artifacts, runtime secrets,
+deployment state, and gateway port reservations. Persistent data is preserved
+by default. Permanent data deletion requires both explicit flags:
+
+```bash
+sudo omurga project delete ./demo --env production --purge-data --yes
+```
 
 The encrypted secret command is not implemented yet. Until it is available,
 every required runtime secret must already exist at

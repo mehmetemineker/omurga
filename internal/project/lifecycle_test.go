@@ -1,8 +1,10 @@
 package project
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,10 +16,11 @@ import (
 )
 
 type lifecycleRunner struct {
-	calls     []string
-	failUp    int
-	failCaddy int
-	composePS string
+	calls        []string
+	failUp       int
+	failCaddy    int
+	composePS    string
+	streamOutput string
 }
 
 func (r *lifecycleRunner) Run(_ context.Context, name string, args ...string) (string, error) {
@@ -39,6 +42,12 @@ func (r *lifecycleRunner) Run(_ context.Context, name string, args ...string) (s
 
 func (r *lifecycleRunner) LookPath(name string) (string, error) {
 	return "/usr/bin/" + name, nil
+}
+
+func (r *lifecycleRunner) Stream(_ context.Context, stdout, _ io.Writer, name string, args ...string) error {
+	r.calls = append(r.calls, strings.Join(append([]string{name}, args...), " "))
+	_, err := io.WriteString(stdout, r.streamOutput)
+	return err
 }
 
 func TestDeployDryRunDoesNotMutateFilesystemOrState(t *testing.T) {
@@ -217,6 +226,181 @@ func TestDeployWithoutGatewayDoesNotRequireOrRunCaddy(t *testing.T) {
 	if err != nil || !exists || deployment.CaddyPath != "" {
 		t.Fatalf("unexpected deployment state: %#v, %v, %v", deployment, exists, err)
 	}
+}
+
+func TestLogsStreamsSelectedService(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	paths := host.DefaultPaths(root)
+	loaded := lifecycleProject(false)
+	writeTestFile(t, paths.CaddyFile, []byte(":80 { respond \"ok\" }\n"), 0o644)
+	runner := &lifecycleRunner{streamOutput: "app-1 | ready\n"}
+	lifecycle := NewLifecycle(paths, runner)
+	if _, err := lifecycle.Deploy(ctx, loaded, false); err != nil {
+		t.Fatalf("Deploy() error = %v", err)
+	}
+
+	output := &bytes.Buffer{}
+	result, err := lifecycle.Logs(ctx, loaded, LogOptions{
+		Follow: true, Tail: "25", Since: "10m", Timestamps: true, Services: []string{"app"},
+	}, false, output, output)
+	if err != nil {
+		t.Fatalf("Logs() error = %v", err)
+	}
+	if output.String() != runner.streamOutput || !strings.Contains(strings.Join(result.Command, " "), "logs --follow --tail 25 --since 10m --timestamps app") {
+		t.Fatalf("unexpected log result: %#v output=%q", result, output.String())
+	}
+	if _, err := lifecycle.Logs(ctx, loaded, LogOptions{Tail: "invalid"}, true, output, output); err == nil {
+		t.Fatal("Logs() accepted an invalid tail value")
+	}
+	if _, err := lifecycle.Logs(ctx, loaded, LogOptions{Tail: "10", Services: []string{"missing"}}, true, output, output); err == nil {
+		t.Fatal("Logs() accepted an unknown service")
+	}
+}
+
+func TestRollbackSwapsHealthyArtifactsAndCanRollForward(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	paths := host.DefaultPaths(root)
+	writeTestFile(t, paths.CaddyFile, []byte(":80 { respond \"ok\" }\n"), 0o644)
+	runner := &lifecycleRunner{}
+	lifecycle := NewLifecycle(paths, runner)
+	first := lifecycleProject(false)
+	first.Project.Services["app"] = serviceWithImage(first.Project.Services["app"], "example/app:1")
+	firstResult, err := lifecycle.Deploy(ctx, first, false)
+	if err != nil {
+		t.Fatalf("first Deploy() error = %v", err)
+	}
+	second := lifecycleProject(false)
+	second.Project.Services["app"] = serviceWithImage(second.Project.Services["app"], "example/app:2")
+	second.Project.Gateway.Routes[0].Domain = "v2.example.com"
+	secondResult, err := lifecycle.Deploy(ctx, second, false)
+	if err != nil {
+		t.Fatalf("second Deploy() error = %v", err)
+	}
+	layout := lifecycle.Layout("demo", "production")
+	if !strings.Contains(readTestFile(t, layout.Compose), "example/app:2") {
+		t.Fatal("second deployment was not active before rollback")
+	}
+
+	plan, err := lifecycle.Rollback(ctx, second, true)
+	if err != nil {
+		t.Fatalf("Rollback() dry-run error = %v", err)
+	}
+	if !plan.DryRun || plan.FromRevision != secondResult.Revision || plan.ToRevision != firstResult.Revision {
+		t.Fatalf("unexpected rollback plan: %#v", plan)
+	}
+	result, err := lifecycle.Rollback(ctx, second, false)
+	if err != nil {
+		t.Fatalf("Rollback() error = %v", err)
+	}
+	if result.ToRevision != firstResult.Revision || !strings.Contains(readTestFile(t, layout.Compose), "example/app:1") {
+		t.Fatalf("previous Compose artifact was not activated: %#v", result)
+	}
+	if !strings.Contains(readTestFile(t, layout.Caddy), "demo.example.com") || !strings.Contains(readTestFile(t, layout.PreviousCompose), "example/app:2") {
+		t.Fatal("rollback artifacts were not swapped")
+	}
+	status := deploymentState(t, ctx, paths, second)
+	if status.Deployment.Revision != firstResult.Revision {
+		t.Fatalf("deployment revision = %q, want %q", status.Deployment.Revision, firstResult.Revision)
+	}
+
+	forward, err := lifecycle.Rollback(ctx, second, false)
+	if err != nil {
+		t.Fatalf("second Rollback() error = %v", err)
+	}
+	if forward.ToRevision != secondResult.Revision || !strings.Contains(readTestFile(t, layout.Compose), "example/app:2") {
+		t.Fatalf("rollback did not roll forward: %#v", forward)
+	}
+}
+
+func TestRollbackFailureRestoresCurrentAndPreviousArtifacts(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	paths := host.DefaultPaths(root)
+	writeTestFile(t, paths.CaddyFile, []byte(":80 { respond \"ok\" }\n"), 0o644)
+	runner := &lifecycleRunner{}
+	lifecycle := NewLifecycle(paths, runner)
+	first := lifecycleProject(false)
+	if _, err := lifecycle.Deploy(ctx, first, false); err != nil {
+		t.Fatalf("first Deploy() error = %v", err)
+	}
+	second := lifecycleProject(false)
+	second.Project.Services["app"] = serviceWithImage(second.Project.Services["app"], "example/app:2")
+	if _, err := lifecycle.Deploy(ctx, second, false); err != nil {
+		t.Fatalf("second Deploy() error = %v", err)
+	}
+	layout := lifecycle.Layout("demo", "production")
+	currentBefore := readTestFile(t, layout.Compose)
+	previousBefore := readTestFile(t, layout.PreviousCompose)
+	runner.failUp = 1
+	if _, err := lifecycle.Rollback(ctx, second, false); err == nil {
+		t.Fatal("Rollback() succeeded despite a failed health check")
+	}
+	if got := readTestFile(t, layout.Compose); got != currentBefore {
+		t.Fatalf("current Compose artifact was not restored:\n%s", got)
+	}
+	if got := readTestFile(t, layout.PreviousCompose); got != previousBefore {
+		t.Fatalf("previous Compose artifact was not restored:\n%s", got)
+	}
+}
+
+func TestDeletePreservesDataByDefaultAndCanPurgeExplicitly(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	paths := host.DefaultPaths(root)
+	writeTestFile(t, paths.CaddyFile, []byte(":80 { respond \"ok\" }\n"), 0o644)
+	runner := &lifecycleRunner{}
+	lifecycle := NewLifecycle(paths, runner)
+	loaded := lifecycleProject(false)
+	if _, err := lifecycle.Deploy(ctx, loaded, false); err != nil {
+		t.Fatalf("Deploy() error = %v", err)
+	}
+	layout := lifecycle.Layout("demo", "production")
+	dataFile := filepath.Join(layout.Root, "data", "uploads", "asset.txt")
+	writeTestFile(t, dataFile, []byte("keep"), 0o640)
+
+	result, err := lifecycle.Delete(ctx, loaded, DeleteOptions{})
+	if err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if !result.DataPreserved || result.State.DeploymentsDeleted != 1 || result.State.PortsReleased != 1 {
+		t.Fatalf("unexpected delete result: %#v", result)
+	}
+	if got := readTestFile(t, dataFile); got != "keep" {
+		t.Fatalf("persistent data changed: %q", got)
+	}
+	if _, err := os.Stat(layout.Compose); !os.IsNotExist(err) {
+		t.Fatalf("Compose artifact still exists: %v", err)
+	}
+	if _, err := os.Stat(layout.Caddy); !os.IsNotExist(err) {
+		t.Fatalf("Caddy artifact still exists: %v", err)
+	}
+	store, err := state.OpenReadOnly(ctx, paths.StateDB)
+	if err != nil {
+		t.Fatalf("OpenReadOnly() error = %v", err)
+	}
+	if _, exists, err := store.GetDeployment(ctx, "demo", "production"); err != nil || exists {
+		store.Close()
+		t.Fatalf("deployment state still exists: %v, %v", exists, err)
+	}
+	ports, err := store.ListGatewayPorts(ctx, "demo", "production")
+	store.Close()
+	if err != nil || len(ports) != 0 {
+		t.Fatalf("gateway ports were not released: %#v, %v", ports, err)
+	}
+
+	if _, err := lifecycle.Delete(ctx, loaded, DeleteOptions{PurgeData: true}); err != nil {
+		t.Fatalf("Delete(purge preserved data) error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(layout.Root, "data")); !os.IsNotExist(err) {
+		t.Fatalf("persistent data was not purged: %v", err)
+	}
+}
+
+func serviceWithImage(service manifest.Service, image string) manifest.Service {
+	service.Image = image
+	return service
 }
 
 func lifecycleProject(withSecret bool) manifest.LoadedProject {

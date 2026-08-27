@@ -37,8 +37,14 @@ new artifact is removed.
 If Caddy validation or reload fails, the previous project snippet and base
 Caddyfile are restored. Omurga then restores the previous Compose deployment.
 Previous artifacts are retained as `compose.previous.yaml` and
-`<project>-<environment>.caddy.previous` for the explicit rollback command that
-will be added next.
+`<project>-<environment>.caddy.previous` for explicit rollback.
+
+`project rollback` validates and health-checks the previous Compose artifact
+before committing the operation. Caddy follows the same validation and reload
+rules as deploy. Current and previous artifacts are swapped only as a successful
+unit, which makes a second rollback act as a roll-forward. A failed rollback
+restores both artifact slots and reconciles the containers that were active
+before the attempt.
 
 ## Dry-run behavior
 
@@ -63,3 +69,27 @@ container state. JSON output includes normalized container objects.
 `project restart` and `project stop` operate on the generated Compose project
 and update the SQLite deployment status. Both support dry-run planning. Runtime
 mutations require root privileges in the current local-host implementation.
+
+## Logs
+
+`project logs` streams Docker Compose output directly, including follow mode and
+context cancellation. It supports `--tail`, `--since`, `--timestamps`, and one
+or more `--service` filters. Service filters must reference a declared project
+service or dependency. Structured JSON output is available for a dry-run log
+plan; live log lines remain the original container output.
+
+## Project deletion
+
+`project delete` removes project containers, the active Caddy route, generated
+artifacts, runtime secrets, the deployment record, and gateway port assignments.
+The manifest source is not deleted.
+
+Persistent project data under the deployment `data` directory is preserved by
+default. Permanent deletion requires `--purge-data --yes`. The purge target is
+resolved and verified as a child of the exact project deployment directory
+before recursive removal. Deletion can be safely retried after a partially
+completed attempt.
+
+The Caddy route is removed only after containers are stopped. The resulting
+complete Caddy configuration is validated before reload; validation failure
+restores the route.

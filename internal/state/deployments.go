@@ -19,6 +19,11 @@ type Deployment struct {
 	LastError    string `json:"lastError,omitempty"`
 }
 
+type DeleteProjectResult struct {
+	DeploymentsDeleted int64 `json:"deploymentsDeleted"`
+	PortsReleased      int64 `json:"portsReleased"`
+}
+
 func (s *Store) PutDeployment(ctx context.Context, deployment Deployment) error {
 	if s.readOnly {
 		return fmt.Errorf("cannot update a deployment using a read-only state database")
@@ -92,4 +97,52 @@ WHERE project = ? AND environment = ?
 		return fmt.Errorf("deployment %s/%s was not found", project, environment)
 	}
 	return nil
+}
+
+func (s *Store) DeleteProject(ctx context.Context, project, environment string) (DeleteProjectResult, error) {
+	if s.readOnly {
+		return DeleteProjectResult{}, fmt.Errorf("cannot delete project state using a read-only state database")
+	}
+	if project == "" || environment == "" {
+		return DeleteProjectResult{}, fmt.Errorf("project and environment are required for state deletion")
+	}
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return DeleteProjectResult{}, fmt.Errorf("could not connect to state database: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "PRAGMA busy_timeout = 5000"); err != nil {
+		return DeleteProjectResult{}, fmt.Errorf("could not configure state database busy timeout: %w", err)
+	}
+	if err := beginImmediate(ctx, conn); err != nil {
+		return DeleteProjectResult{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
+		}
+	}()
+
+	deploymentResult, err := conn.ExecContext(ctx, "DELETE FROM deployments WHERE project = ? AND environment = ?", project, environment)
+	if err != nil {
+		return DeleteProjectResult{}, fmt.Errorf("could not delete deployment state: %w", err)
+	}
+	portResult, err := conn.ExecContext(ctx, "DELETE FROM gateway_ports WHERE project = ? AND environment = ?", project, environment)
+	if err != nil {
+		return DeleteProjectResult{}, fmt.Errorf("could not release gateway ports: %w", err)
+	}
+	deploymentsDeleted, err := deploymentResult.RowsAffected()
+	if err != nil {
+		return DeleteProjectResult{}, fmt.Errorf("could not inspect deleted deployment state: %w", err)
+	}
+	portsReleased, err := portResult.RowsAffected()
+	if err != nil {
+		return DeleteProjectResult{}, fmt.Errorf("could not inspect released gateway ports: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return DeleteProjectResult{}, fmt.Errorf("could not commit project state deletion: %w", err)
+	}
+	committed = true
+	return DeleteProjectResult{DeploymentsDeleted: deploymentsDeleted, PortsReleased: portsReleased}, nil
 }

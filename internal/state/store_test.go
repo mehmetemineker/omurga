@@ -255,6 +255,19 @@ func TestDeploymentStateLifecycle(t *testing.T) {
 	if err != nil || stored.Status != "stopped" {
 		t.Fatalf("unexpected updated deployment: %#v, %v", stored, err)
 	}
+	if _, err := store.AllocateGatewayPorts(ctx, "demo", "production", []gateway.Target{{Service: "app", ContainerPort: 3000}}); err != nil {
+		t.Fatalf("AllocateGatewayPorts() error = %v", err)
+	}
+	deleted, err := store.DeleteProject(ctx, "demo", "production")
+	if err != nil {
+		t.Fatalf("DeleteProject() error = %v", err)
+	}
+	if deleted.DeploymentsDeleted != 1 || deleted.PortsReleased != 1 {
+		t.Fatalf("unexpected deletion result: %#v", deleted)
+	}
+	if _, exists, err := store.GetDeployment(ctx, "demo", "production"); err != nil || exists {
+		t.Fatalf("deployment still exists after deletion: %v, %v", exists, err)
+	}
 }
 
 func TestVersionOneDatabaseIsReadableAndMigratesOnWriteOpen(t *testing.T) {

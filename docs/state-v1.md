@@ -43,6 +43,10 @@ The artifact revision is a SHA-256 digest of the generated Compose and Caddy
 content. It identifies generated runtime configuration without storing secret
 values.
 
+Project deletion removes the deployment record and its gateway port assignments
+in one immediate transaction. Persistent project data is filesystem state and
+is not stored in or removed through SQLite.
+
 ## Render and dry-run behavior
 
 `omurga project render` remains a standalone, non-mutating operation and uses

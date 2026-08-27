@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,14 +23,131 @@ func newProjectCommand(opts *options) *cobra.Command {
 		newProjectStatusCommand(opts),
 		newProjectControlCommand(opts, "restart"),
 		newProjectControlCommand(opts, "stop"),
+		newProjectLogsCommand(opts),
+		newProjectRollbackCommand(opts),
+		newProjectDeleteCommand(opts),
 		pending("list", "List projects"),
 		pending("show", "Show project details"),
-		pending("logs", "Show project logs"),
-		pending("rollback", "Roll back to the previous deployment"),
-		pending("delete", "Remove a project"),
 	)
 	cmd.AddCommand(newProjectValidateCommand(opts))
 	return cmd
+}
+
+func newProjectLogsCommand(opts *options) *cobra.Command {
+	var follow bool
+	var tail string
+	var since string
+	var timestamps bool
+	var services []string
+	cmd := &cobra.Command{
+		Use:   "logs [project-directory-or-manifest]",
+		Short: "Stream or inspect project service logs",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			if opts.json && !opts.dryRun {
+				return fmt.Errorf("--json is supported for project logs only with --dry-run")
+			}
+			loaded, err := loadProjectArgument(args, opts.environment)
+			if err != nil {
+				return err
+			}
+			lifecycle := projectruntime.NewLifecycle(host.DefaultPaths("/"), host.ExecRunner{})
+			result, err := lifecycle.Logs(cmd.Context(), loaded, projectruntime.LogOptions{
+				Follow: follow, Tail: tail, Since: since, Timestamps: timestamps, Services: services,
+			}, opts.dryRun, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			if opts.dryRun {
+				return writeLogPlan(cmd.OutOrStdout(), result, opts)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "follow log output")
+	cmd.Flags().StringVar(&tail, "tail", "100", "number of lines to show from the end of the logs, or all")
+	cmd.Flags().StringVar(&since, "since", "", "show logs since a duration or timestamp accepted by Docker")
+	cmd.Flags().BoolVarP(&timestamps, "timestamps", "t", false, "show timestamps")
+	cmd.Flags().StringSliceVar(&services, "service", nil, "limit logs to one or more project services")
+	return cmd
+}
+
+func newProjectRollbackCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rollback [project-directory-or-manifest]",
+		Short: "Switch to the previous healthy deployment artifacts",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			loaded, err := loadProjectArgument(args, opts.environment)
+			if err != nil {
+				return err
+			}
+			runner := host.ExecRunner{}
+			if !opts.dryRun {
+				if err := requireRoot(cmd.Context(), runner, "project rollback"); err != nil {
+					return err
+				}
+			}
+			result, err := projectruntime.NewLifecycle(host.DefaultPaths("/"), runner).Rollback(cmd.Context(), loaded, opts.dryRun)
+			if err != nil {
+				return err
+			}
+			return writeRollbackResult(cmd.OutOrStdout(), result, opts)
+		},
+	}
+}
+
+func newProjectDeleteCommand(opts *options) *cobra.Command {
+	var purgeData bool
+	cmd := &cobra.Command{
+		Use:   "delete [project-directory-or-manifest]",
+		Short: "Remove a deployed project while preserving persistent data by default",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			if purgeData && !opts.dryRun && !opts.yes {
+				return fmt.Errorf("--purge-data requires --yes because persistent project data will be permanently deleted")
+			}
+			loaded, err := loadProjectArgument(args, opts.environment)
+			if err != nil {
+				return err
+			}
+			runner := host.ExecRunner{}
+			if !opts.dryRun {
+				if err := requireRoot(cmd.Context(), runner, "project delete"); err != nil {
+					return err
+				}
+			}
+			result, err := projectruntime.NewLifecycle(host.DefaultPaths("/"), runner).Delete(cmd.Context(), loaded, projectruntime.DeleteOptions{
+				DryRun: opts.dryRun, PurgeData: purgeData,
+			})
+			if err != nil {
+				return err
+			}
+			return writeDeleteResult(cmd.OutOrStdout(), result, opts)
+		},
+	}
+	cmd.Flags().BoolVar(&purgeData, "purge-data", false, "permanently remove persistent project data")
+	return cmd
+}
+
+func requireRoot(ctx context.Context, runner host.Runner, operation string) error {
+	root, err := host.IsRoot(ctx, runner)
+	if err != nil {
+		return fmt.Errorf("could not verify root privileges: %w", err)
+	}
+	if !root {
+		return fmt.Errorf("%s requires root privileges; run it with sudo", operation)
+	}
+	return nil
 }
 
 func newProjectDeployCommand(opts *options) *cobra.Command {
@@ -218,6 +336,72 @@ func writeControlResult(writer io.Writer, result projectruntime.ControlResult, o
 	}
 	_, err := fmt.Fprintf(writer, "%s project %s/%s\n", verb, result.Project, result.Environment)
 	return err
+}
+
+func writeLogPlan(writer io.Writer, result projectruntime.LogResult, opts *options) error {
+	if opts.quiet {
+		return nil
+	}
+	if opts.json {
+		return json.NewEncoder(writer).Encode(result)
+	}
+	_, err := fmt.Fprintf(writer, "would run: %s\n", strings.Join(result.Command, " "))
+	return err
+}
+
+func writeRollbackResult(writer io.Writer, result projectruntime.RollbackResult, opts *options) error {
+	if opts.quiet {
+		return nil
+	}
+	if opts.json {
+		return json.NewEncoder(writer).Encode(result)
+	}
+	mode := "rolled back"
+	if result.DryRun {
+		mode = "rollback plan for"
+	}
+	if _, err := fmt.Fprintf(writer, "%s %s/%s (%.12s -> %.12s)\n", mode, result.Project, result.Environment, result.FromRevision, result.ToRevision); err != nil {
+		return err
+	}
+	return writeLifecycleSteps(writer, result.Steps)
+}
+
+func writeDeleteResult(writer io.Writer, result projectruntime.DeleteResult, opts *options) error {
+	if opts.quiet {
+		return nil
+	}
+	if opts.json {
+		return json.NewEncoder(writer).Encode(result)
+	}
+	mode := "deleted"
+	if result.DryRun {
+		mode = "deletion plan for"
+	}
+	if _, err := fmt.Fprintf(writer, "%s %s/%s\n", mode, result.Project, result.Environment); err != nil {
+		return err
+	}
+	if result.DataPreserved {
+		if _, err := fmt.Fprintf(writer, "  persistent data will be preserved at %s\n", result.DataPath); err != nil {
+			return err
+		}
+	}
+	return writeLifecycleSteps(writer, result.Steps)
+}
+
+func writeLifecycleSteps(writer io.Writer, steps []projectruntime.LifecycleStep) error {
+	for _, step := range steps {
+		detail := step.Path
+		if len(step.Command) > 0 {
+			detail = strings.Join(step.Command, " ")
+		}
+		if detail != "" {
+			detail = " - " + detail
+		}
+		if _, err := fmt.Fprintf(writer, "  %-9s %s%s\n", step.Status, step.Name, detail); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func mapString(values map[string]any, keys ...string) string {
