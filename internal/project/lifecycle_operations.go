@@ -126,7 +126,7 @@ func (l Lifecycle) Rollback(ctx context.Context, loaded manifest.LoadedProject, 
 	result := RollbackResult{
 		Project: loaded.Project.Name, Environment: environment,
 		FromRevision: deployment.Revision, ToRevision: targetRevision, DryRun: dryRun,
-		Steps: rollbackPlan(layout, loaded.Project.Name, environment, needsCaddy),
+		Steps: rollbackPlan(layout, loaded.Project.Name, environment, needsCaddy, l.serviceManager().ReloadCommand("caddy")),
 	}
 	if dryRun {
 		return result, nil
@@ -320,7 +320,7 @@ func validateLogOptions(project manifest.Project, options LogOptions) error {
 	return nil
 }
 
-func rollbackPlan(layout DeploymentLayout, project, environment string, needsCaddy bool) []LifecycleStep {
+func rollbackPlan(layout DeploymentLayout, project, environment string, needsCaddy bool, reload host.PackageCommand) []LifecycleStep {
 	steps := []LifecycleStep{
 		{Name: "activate previous Compose artifact", Path: layout.PreviousCompose, Status: "planned"},
 		{Name: "validate previous Compose configuration", Command: append([]string{"docker"}, composeArgs(layout, project, environment, "config", "--quiet")...), Status: "planned"},
@@ -330,7 +330,7 @@ func rollbackPlan(layout DeploymentLayout, project, environment string, needsCad
 		steps = append(steps,
 			LifecycleStep{Name: "activate previous Caddy artifact", Path: layout.PreviousCaddy, Status: "planned"},
 			LifecycleStep{Name: "validate Caddy configuration", Status: "planned"},
-			LifecycleStep{Name: "reload Caddy", Command: []string{"systemctl", "reload", "caddy"}, Status: "planned"},
+			LifecycleStep{Name: "reload Caddy", Command: append([]string{reload.Name}, reload.Args...), Status: "planned"},
 		)
 	}
 	return append(steps, LifecycleStep{Name: "store rollback state", Status: "planned"})

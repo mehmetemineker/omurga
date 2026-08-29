@@ -2,17 +2,17 @@ package host
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
 )
 
 type OSRelease struct {
-	ID         string `json:"id"`
-	VersionID  string `json:"versionId"`
-	Codename   string `json:"codename,omitempty"`
-	PrettyName string `json:"prettyName,omitempty"`
+	ID         string   `json:"id"`
+	IDLike     []string `json:"idLike,omitempty"`
+	VersionID  string   `json:"versionId"`
+	Codename   string   `json:"codename,omitempty"`
+	PrettyName string   `json:"prettyName,omitempty"`
 }
 
 func LoadOSRelease(path string) (OSRelease, error) {
@@ -41,20 +41,11 @@ func LoadOSRelease(path string) (OSRelease, error) {
 
 	return OSRelease{
 		ID:         values["ID"],
+		IDLike:     strings.Fields(values["ID_LIKE"]),
 		VersionID:  values["VERSION_ID"],
 		Codename:   firstNonEmpty(values["UBUNTU_CODENAME"], values["VERSION_CODENAME"]),
 		PrettyName: values["PRETTY_NAME"],
 	}, nil
-}
-
-func ValidateSupportedUbuntu(release OSRelease) error {
-	if release.ID != "ubuntu" {
-		return fmt.Errorf("unsupported operating system %q: Ubuntu is required", release.ID)
-	}
-	if release.VersionID != "22.04" && release.VersionID != "24.04" {
-		return fmt.Errorf("unsupported Ubuntu version %q: supported versions are 22.04 and 24.04", release.VersionID)
-	}
-	return nil
 }
 
 func parseOSReleaseValue(value string) string {

@@ -170,7 +170,11 @@ func newProjectRollbackCommand(opts *options) *cobra.Command {
 					return err
 				}
 			}
-			result, err := projectruntime.NewLifecycle(host.DefaultPaths("/"), runner).Rollback(cmd.Context(), loaded, opts.dryRun)
+			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun)
+			if err != nil {
+				return err
+			}
+			result, err := lifecycle.Rollback(cmd.Context(), loaded, opts.dryRun)
 			if err != nil {
 				return err
 			}
@@ -202,7 +206,11 @@ func newProjectDeleteCommand(opts *options) *cobra.Command {
 					return err
 				}
 			}
-			result, err := projectruntime.NewLifecycle(host.DefaultPaths("/"), runner).Delete(cmd.Context(), loaded, projectruntime.DeleteOptions{
+			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun)
+			if err != nil {
+				return err
+			}
+			result, err := lifecycle.Delete(cmd.Context(), loaded, projectruntime.DeleteOptions{
 				DryRun: opts.dryRun, PurgeData: purgeData,
 			})
 			if err != nil {
@@ -249,7 +257,10 @@ func newProjectDeployCommand(opts *options) *cobra.Command {
 					return fmt.Errorf("project deploy requires root privileges; run it with sudo")
 				}
 			}
-			lifecycle := projectruntime.NewLifecycle(host.DefaultPaths("/"), runner)
+			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun)
+			if err != nil {
+				return err
+			}
 			result, err := lifecycle.Deploy(cmd.Context(), loaded, opts.dryRun)
 			if err != nil {
 				return errors.Join(err, notifyProjectEvent(cmd.Context(), loaded, "deploy-failed", err))
@@ -258,6 +269,18 @@ func newProjectDeployCommand(opts *options) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func platformLifecycle(paths host.Paths, runner host.Runner, dryRun bool) (projectruntime.Lifecycle, error) {
+	lifecycle := projectruntime.NewLifecycle(paths, runner)
+	if dryRun {
+		return lifecycle, nil
+	}
+	services, err := host.DetectServiceManager(paths.OSRelease)
+	if err != nil {
+		return projectruntime.Lifecycle{}, err
+	}
+	return lifecycle.WithServiceManager(services), nil
 }
 
 func newProjectStatusCommand(opts *options) *cobra.Command {

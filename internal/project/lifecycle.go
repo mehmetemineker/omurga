@@ -23,8 +23,9 @@ import (
 const defaultDeployWaitSeconds = 120
 
 type Lifecycle struct {
-	Paths  host.Paths
-	Runner host.Runner
+	Paths    host.Paths
+	Runner   host.Runner
+	Services host.ServiceManager
 }
 
 type DeploymentLayout struct {
@@ -71,7 +72,21 @@ type ControlResult struct {
 }
 
 func NewLifecycle(paths host.Paths, runner host.Runner) Lifecycle {
-	return Lifecycle{Paths: paths, Runner: runner}
+	return Lifecycle{Paths: paths, Runner: runner, Services: host.NewSystemdServiceManager()}
+}
+
+func (l Lifecycle) WithServiceManager(services host.ServiceManager) Lifecycle {
+	if services != nil {
+		l.Services = services
+	}
+	return l
+}
+
+func (l Lifecycle) serviceManager() host.ServiceManager {
+	if l.Services == nil {
+		return host.NewSystemdServiceManager()
+	}
+	return l.Services
 }
 
 func (l Lifecycle) Layout(projectName, environment string) DeploymentLayout {
@@ -141,7 +156,7 @@ func (l Lifecycle) Deploy(ctx context.Context, loaded manifest.LoadedProject, dr
 		Ports:           ports,
 		RequiredSecrets: secrets,
 		Layout:          layout,
-		Steps:           deploymentPlan(layout, loaded.Project, loaded.Environment, needsCaddy, secrets),
+		Steps:           deploymentPlan(layout, loaded.Project, loaded.Environment, needsCaddy, secrets, l.serviceManager().ReloadCommand("caddy")),
 	}
 	if dryRun {
 		return result, nil
@@ -311,8 +326,9 @@ func (l Lifecycle) checkPrerequisites(needsCaddy bool) error {
 	if _, err := l.Runner.LookPath("caddy"); err != nil {
 		return fmt.Errorf("Caddy is required for gateway deployment")
 	}
-	if _, err := l.Runner.LookPath("systemctl"); err != nil {
-		return fmt.Errorf("systemctl is required for gateway deployment")
+	serviceCommand := l.serviceManager().VersionCommand()
+	if _, err := l.Runner.LookPath(serviceCommand.Name); err != nil {
+		return fmt.Errorf("%s is required for gateway deployment", serviceCommand.Name)
 	}
 	if info, err := os.Stat(l.Paths.CaddyFile); err != nil {
 		return fmt.Errorf("could not access Caddyfile %s: %w", l.Paths.CaddyFile, err)
@@ -350,10 +366,11 @@ func (l Lifecycle) applyCaddy(ctx context.Context, layout DeploymentLayout, cont
 		restoreErr := errors.Join(restoreFile(layout.Caddy, snippetSnapshot), restoreFile(l.Paths.CaddyFile, baseSnapshot))
 		return errors.Join(fmt.Errorf("generated Caddy configuration is invalid: %w", err), restoreErr)
 	}
-	if _, err := l.Runner.Run(ctx, "systemctl", "reload", "caddy"); err != nil {
+	reload := l.serviceManager().ReloadCommand("caddy")
+	if _, err := l.Runner.Run(ctx, reload.Name, reload.Args...); err != nil {
 		restoreErr := errors.Join(restoreFile(layout.Caddy, snippetSnapshot), restoreFile(l.Paths.CaddyFile, baseSnapshot))
 		if restoreErr == nil {
-			_, restoreErr = l.Runner.Run(ctx, "systemctl", "reload", "caddy")
+			_, restoreErr = l.Runner.Run(ctx, reload.Name, reload.Args...)
 		}
 		return errors.Join(fmt.Errorf("could not reload Caddy: %w", err), restoreErr)
 	}
@@ -384,7 +401,7 @@ func composeArgs(layout DeploymentLayout, projectName, environment string, actio
 	return append(args, action...)
 }
 
-func deploymentPlan(layout DeploymentLayout, project manifest.Project, environment string, needsCaddy bool, secrets []string) []LifecycleStep {
+func deploymentPlan(layout DeploymentLayout, project manifest.Project, environment string, needsCaddy bool, secrets []string, reload host.PackageCommand) []LifecycleStep {
 	steps := []LifecycleStep{{Name: "allocate gateway ports", Status: "planned"}}
 	steps = append(steps, LifecycleStep{Name: "prepare deployment directories", Path: layout.Root, Status: "planned"})
 	for _, secret := range secrets {
@@ -399,7 +416,7 @@ func deploymentPlan(layout DeploymentLayout, project manifest.Project, environme
 		steps = append(steps,
 			LifecycleStep{Name: "reconcile Caddy project artifact", Path: layout.Caddy, Status: "planned"},
 			LifecycleStep{Name: "validate Caddy configuration", Status: "planned"},
-			LifecycleStep{Name: "reload Caddy", Command: []string{"systemctl", "reload", "caddy"}, Status: "planned"},
+			LifecycleStep{Name: "reload Caddy", Command: append([]string{reload.Name}, reload.Args...), Status: "planned"},
 		)
 	}
 	steps = append(steps, LifecycleStep{Name: "store deployment state", Status: "planned"})

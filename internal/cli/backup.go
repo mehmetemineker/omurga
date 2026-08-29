@@ -339,6 +339,13 @@ func newBackupScheduleCommand(opts *options) *cobra.Command {
 			if err := requireRoot(cmd.Context(), host.ExecRunner{}, "backup schedule"); err != nil {
 				return err
 			}
+			services, err := host.DetectServiceManager(host.DefaultPaths("/").OSRelease)
+			if err != nil {
+				return err
+			}
+			if services.Name() != "systemd" {
+				return fmt.Errorf("backup scheduling currently requires systemd; detected %s", services.Name())
+			}
 			if err := manager.ValidateCredentials(); err != nil {
 				return err
 			}
@@ -347,10 +354,12 @@ func newBackupScheduleCommand(opts *options) *cobra.Command {
 				return err
 			}
 			result.Paths = paths
-			if _, err := (host.ExecRunner{}).Run(cmd.Context(), "systemctl", "daemon-reload"); err != nil {
+			daemonReload := services.DaemonReloadCommand()
+			if _, err := (host.ExecRunner{}).Run(cmd.Context(), daemonReload.Name, daemonReload.Args...); err != nil {
 				return err
 			}
-			if _, err := (host.ExecRunner{}).Run(cmd.Context(), "systemctl", "enable", "--now", "omurga-backup-"+name+".timer"); err != nil {
+			enable := services.EnableNowCommand("omurga-backup-" + name + ".timer")
+			if _, err := (host.ExecRunner{}).Run(cmd.Context(), enable.Name, enable.Args...); err != nil {
 				return err
 			}
 		}
@@ -374,13 +383,22 @@ func newBackupUnscheduleCommand(opts *options) *cobra.Command {
 			if err := requireRoot(cmd.Context(), host.ExecRunner{}, "backup unschedule"); err != nil {
 				return err
 			}
-			_, _ = (host.ExecRunner{}).Run(cmd.Context(), "systemctl", "disable", "--now", "omurga-backup-"+name+".timer")
+			services, err := host.DetectServiceManager(host.DefaultPaths("/").OSRelease)
+			if err != nil {
+				return err
+			}
+			if services.Name() != "systemd" {
+				return fmt.Errorf("backup scheduling currently requires systemd; detected %s", services.Name())
+			}
+			disable := services.DisableNowCommand("omurga-backup-" + name + ".timer")
+			_, _ = (host.ExecRunner{}).Run(cmd.Context(), disable.Name, disable.Args...)
 			for _, path := range paths {
 				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 					return err
 				}
 			}
-			if _, err := (host.ExecRunner{}).Run(cmd.Context(), "systemctl", "daemon-reload"); err != nil {
+			daemonReload := services.DaemonReloadCommand()
+			if _, err := (host.ExecRunner{}).Run(cmd.Context(), daemonReload.Name, daemonReload.Args...); err != nil {
 				return err
 			}
 		}

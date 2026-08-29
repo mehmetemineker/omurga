@@ -60,10 +60,17 @@ func newGatewayActionCommand(opts *options, action string) *cobra.Command {
 		paths := host.DefaultPaths("/")
 		result := gatewayResult{Action: action, DryRun: opts.dryRun}
 		runner := host.ExecRunner{}
+		services := host.NewSystemdServiceManager()
+		if detected, err := host.DetectServiceManager(paths.OSRelease); err == nil {
+			services = detected
+		} else if !opts.dryRun {
+			return err
+		}
 		if action == "status" {
-			result.Command = []string{"systemctl", "is-active", "caddy"}
+			status := services.IsActiveCommand("caddy")
+			result.Command = append([]string{status.Name}, status.Args...)
 			if !opts.dryRun {
-				output, err := runner.Run(cmd.Context(), "systemctl", "is-active", "caddy")
+				output, err := runner.Run(cmd.Context(), status.Name, status.Args...)
 				if err != nil {
 					return err
 				}
@@ -86,8 +93,9 @@ func newGatewayActionCommand(opts *options, action string) *cobra.Command {
 		}
 		result.Output = output
 		if action == "reload" {
-			result.Command = []string{"systemctl", "reload", "caddy"}
-			output, err = runner.Run(cmd.Context(), "systemctl", "reload", "caddy")
+			reload := services.ReloadCommand("caddy")
+			result.Command = append([]string{reload.Name}, reload.Args...)
+			output, err = runner.Run(cmd.Context(), reload.Name, reload.Args...)
 			if err != nil {
 				return err
 			}

@@ -1,8 +1,7 @@
 # Omurga project lifecycle v1
 
-The initial project lifecycle manages a project on the local Ubuntu host. Remote
-host execution will reuse this reconciliation contract after SSH host support is
-implemented.
+The project lifecycle manages a project on a local supported Linux host. Remote
+execution reuses the same reconciliation contract through SSH host profiles.
 
 ## Deploy sequence
 

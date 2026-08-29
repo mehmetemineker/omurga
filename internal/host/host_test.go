@@ -46,7 +46,7 @@ func (r *fakeRunner) LookPath(name string) (string, error) {
 
 func TestUpdatePackagesUsesSafeUpgradeByDefault(t *testing.T) {
 	runner := &fakeRunner{outputs: map[string]string{}, errors: map[string]error{}}
-	result, err := UpdatePackages(context.Background(), runner, false, false)
+	result, err := UpdatePackages(context.Background(), runner, NewUbuntuProvider(), false, false)
 	if err != nil {
 		t.Fatalf("UpdatePackages() error = %v", err)
 	}
@@ -60,7 +60,7 @@ func TestUpdatePackagesUsesSafeUpgradeByDefault(t *testing.T) {
 
 func TestUpdatePackagesDryRunDoesNotExecuteCommands(t *testing.T) {
 	runner := &fakeRunner{}
-	result, err := UpdatePackages(context.Background(), runner, true, true)
+	result, err := UpdatePackages(context.Background(), runner, NewUbuntuProvider(), true, true)
 	if err != nil {
 		t.Fatalf("UpdatePackages(dryRun) error = %v", err)
 	}
@@ -119,7 +119,7 @@ func createInitializedPaths(t *testing.T) Paths {
 	if err := os.MkdirAll(filepath.Dir(paths.OSRelease), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(paths.OSRelease, []byte("ID=ubuntu\nVERSION_ID=24.04\nPRETTY_NAME=\"Ubuntu 24.04 LTS\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(paths.OSRelease, []byte("ID=ubuntu\nVERSION_ID=24.04\nVERSION_CODENAME=noble\nPRETTY_NAME=\"Ubuntu 24.04 LTS\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, directory := range paths.ManagedDirectories() {

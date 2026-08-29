@@ -7,11 +7,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 const (
-	dockerKeyURL   = "https://download.docker.com/linux/ubuntu/gpg"
 	caddyKeyURL    = "https://dl.cloudsmith.io/public/caddy/stable/gpg.key"
 	caddySourceURL = "https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt"
 )
@@ -39,6 +37,17 @@ type Installer struct {
 	Paths      Paths
 	Runner     Runner
 	Downloader Downloader
+	Provider   DistributionProvider
+}
+
+func (i Installer) providerFor(release OSRelease) (DistributionProvider, error) {
+	if i.Provider != nil {
+		if err := i.Provider.Validate(release); err != nil {
+			return nil, err
+		}
+		return i.Provider, nil
+	}
+	return DefaultProviderRegistry().Resolve(release)
 }
 
 func NewInstaller(paths Paths) Installer {
@@ -71,6 +80,10 @@ func (i Installer) runStep(ctx context.Context, result *InstallResult, options I
 	}
 	result.Steps = append(result.Steps, step)
 	return nil
+}
+
+func (i Installer) runCommand(ctx context.Context, result *InstallResult, options InstallOptions, name string, command PackageCommand) error {
+	return i.runStep(ctx, result, options, name, command.Name, command.Args...)
 }
 
 func (i Installer) fileStep(result *InstallResult, options InstallOptions, name, path string, changed bool) {
@@ -137,11 +150,6 @@ func ensureFile(path string, data []byte, mode fs.FileMode, dryRun bool) (bool, 
 		return false, err
 	}
 	return true, writeFileAtomically(path, data, mode)
-}
-
-func packageInstalled(ctx context.Context, runner Runner, name string) bool {
-	output, err := runner.Run(ctx, "dpkg-query", "-W", "-f=${Status}", name)
-	return err == nil && strings.Contains(output, "install ok installed")
 }
 
 func commandHealthy(ctx context.Context, runner Runner, name string, args ...string) bool {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -47,6 +48,7 @@ func TestInstallDockerRequiresExplicitConflictReplacement(t *testing.T) {
 	paths := DefaultPaths(t.TempDir())
 	runner := &fakeRunner{
 		outputs: map[string]string{
+			commandKey("dpkg", "--print-architecture"):                  "amd64",
 			commandKey("dpkg-query", "-W", "-f=${Status}", "docker.io"): "install ok installed",
 		},
 		errors: map[string]error{},
@@ -68,7 +70,7 @@ func TestInstallDockerConfiguresOfficialRepository(t *testing.T) {
 	installer := Installer{
 		Paths:      paths,
 		Runner:     runner,
-		Downloader: fakeDownloader{dockerKeyURL: []byte("docker-signing-key")},
+		Downloader: fakeDownloader{"https://download.docker.com/linux/ubuntu/gpg": []byte("docker-signing-key")},
 	}
 
 	result, err := installer.InstallDocker(context.Background(), supportedRelease(), InstallOptions{})
@@ -157,6 +159,46 @@ func TestInstallCaddyConfiguresOfficialRepository(t *testing.T) {
 	}
 }
 
+func TestInstallDockerConfiguresOfficialDebianRepository(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	runner := &fakeRunner{outputs: map[string]string{commandKey("dpkg", "--print-architecture"): "arm64"}, errors: map[string]error{}}
+	installer := Installer{
+		Paths: paths, Runner: runner,
+		Downloader: fakeDownloader{"https://download.docker.com/linux/debian/gpg": []byte("debian-docker-key")},
+	}
+	if _, err := installer.InstallDocker(context.Background(), supportedDebianRelease(), InstallOptions{}); err != nil {
+		t.Fatalf("InstallDocker(Debian) error = %v", err)
+	}
+	source, err := os.ReadFile(paths.DockerSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if !strings.Contains(text, "URIs: https://download.docker.com/linux/debian") || !strings.Contains(text, "Suites: bookworm") || !strings.Contains(text, "Architectures: arm64") {
+		t.Fatalf("unexpected Debian Docker source:\n%s", text)
+	}
+}
+
+func TestRepositoryTargetRejectsPathsOutsideHostRoot(t *testing.T) {
+	installer := NewInstaller(DefaultPaths(t.TempDir()))
+	for _, target := range []string{"../outside", "/etc/outside", `etc\outside`, "C:/outside"} {
+		if _, err := installer.repositoryTarget(target); err == nil {
+			t.Fatalf("repositoryTarget(%q) accepted an unsafe path", target)
+		}
+	}
+	resolved, err := installer.repositoryTarget("etc/example/repository.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != filepath.Join(installer.Paths.Root, "etc", "example", "repository.conf") {
+		t.Fatalf("unexpected repository target: %s", resolved)
+	}
+}
+
 func supportedRelease() OSRelease {
 	return OSRelease{ID: "ubuntu", VersionID: "24.04", Codename: "noble", PrettyName: "Ubuntu 24.04 LTS"}
+}
+
+func supportedDebianRelease() OSRelease {
+	return OSRelease{ID: "debian", VersionID: "12", Codename: "bookworm", PrettyName: "Debian GNU/Linux 12 (bookworm)"}
 }

@@ -12,7 +12,7 @@ func TestInitializeCreatesManagedDirectoriesAndConfig(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(paths.OSRelease), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(paths.OSRelease, []byte("ID=ubuntu\nVERSION_ID=22.04\nPRETTY_NAME=\"Ubuntu 22.04 LTS\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(paths.OSRelease, []byte("ID=ubuntu\nVERSION_ID=22.04\nVERSION_CODENAME=jammy\nPRETTY_NAME=\"Ubuntu 22.04 LTS\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -53,7 +53,7 @@ func TestInitializeDryRunDoesNotWrite(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(paths.OSRelease), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(paths.OSRelease, []byte("ID=ubuntu\nVERSION_ID=24.04\n"), 0o600); err != nil {
+	if err := os.WriteFile(paths.OSRelease, []byte("ID=ubuntu\nVERSION_ID=24.04\nVERSION_CODENAME=noble\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -66,5 +66,23 @@ func TestInitializeDryRunDoesNotWrite(t *testing.T) {
 	}
 	if _, err := os.Stat(paths.ConfigRoot); !os.IsNotExist(err) {
 		t.Fatalf("dry-run wrote to the filesystem: %v", err)
+	}
+}
+
+func TestInitializeSupportsDebian(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(paths.OSRelease), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.OSRelease, []byte("ID=debian\nVERSION_ID=13\nVERSION_CODENAME=trixie\nPRETTY_NAME=\"Debian GNU/Linux 13\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Initialize(paths, true)
+	if err != nil {
+		t.Fatalf("Initialize(Debian) error = %v", err)
+	}
+	if result.Platform.Distribution != "debian" || result.Platform.PackageManager != "apt" || result.Platform.ServiceManager != "systemd" {
+		t.Fatalf("unexpected Debian platform: %#v", result.Platform)
 	}
 }

@@ -16,6 +16,7 @@ func newHostCommand(opts *options) *cobra.Command {
 	cmd := newGroupCommand("host", "Manage host connections and provisioning",
 		newHostInitCommand(opts),
 		newHostInstallCommand(opts),
+		newHostDetectCommand(opts),
 		newHostAddCommand(opts),
 		newHostListCommand(opts),
 		newHostShowCommand(opts),
@@ -34,7 +35,7 @@ func newHostInitCommand(opts *options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize Omurga and install Docker and Caddy on an Ubuntu host",
+		Short: "Initialize Omurga and install Docker and Caddy on a supported Linux host",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireLocalHost(opts.host); err != nil {
@@ -90,11 +91,8 @@ func newHostInstallCommand(opts *options) *cobra.Command {
 			}
 
 			paths := host.DefaultPaths("/")
-			release, err := host.LoadOSRelease(paths.OSRelease)
+			release, _, _, err := host.DetectPlatform(paths.OSRelease)
 			if err != nil {
-				return fmt.Errorf("could not detect the operating system: %w", err)
-			}
-			if err := host.ValidateSupportedUbuntu(release); err != nil {
 				return err
 			}
 			if !opts.dryRun {
@@ -126,18 +124,15 @@ func newHostUpdateCommand(opts *options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update APT package indexes and upgrade installed packages",
+		Short: "Update package indexes and upgrade installed packages",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireLocalHost(opts.host); err != nil {
 				return err
 			}
 			paths := host.DefaultPaths("/")
-			release, err := host.LoadOSRelease(paths.OSRelease)
+			_, provider, _, err := host.DetectPlatform(paths.OSRelease)
 			if err != nil {
-				return fmt.Errorf("could not detect the operating system: %w", err)
-			}
-			if err := host.ValidateSupportedUbuntu(release); err != nil {
 				return err
 			}
 
@@ -152,15 +147,44 @@ func newHostUpdateCommand(opts *options) *cobra.Command {
 				}
 			}
 
-			result, err := host.UpdatePackages(cmd.Context(), runner, full, opts.dryRun)
+			result, err := host.UpdatePackages(cmd.Context(), runner, provider, full, opts.dryRun)
 			if err != nil {
 				return err
 			}
 			return writeUpdateResult(cmd.OutOrStdout(), result, opts)
 		},
 	}
-	cmd.Flags().BoolVar(&full, "full", false, "use apt-get full-upgrade instead of the safer upgrade mode")
+	cmd.Flags().BoolVar(&full, "full", false, "use the provider's full distribution upgrade mode")
 	return cmd
+}
+
+func newHostDetectCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "detect",
+		Short: "Detect the Linux distribution and selected provider",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			release, _, platform, err := host.DetectPlatform(host.DefaultPaths("/").OSRelease)
+			if err != nil {
+				return err
+			}
+			result := struct {
+				OS       host.OSRelease    `json:"os"`
+				Platform host.PlatformInfo `json:"platform"`
+			}{release, platform}
+			if opts.quiet {
+				return nil
+			}
+			if opts.json {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s %s (%s)\n  family: %s\n  package manager: %s\n  service manager: %s\n  support: %s\n", strings.ToUpper(platform.Distribution[:1])+platform.Distribution[1:], platform.Version, platform.Codename, platform.Family, platform.PackageManager, platform.ServiceManager, platform.SupportLevel)
+			return err
+		},
+	}
 }
 
 func newDoctorCommand(opts *options, use string) *cobra.Command {
@@ -203,7 +227,7 @@ func writeInitResult(writer io.Writer, result host.InitResult, installations []h
 	if result.DryRun {
 		mode = "initialization plan for"
 	}
-	if _, err := fmt.Fprintf(writer, "%s %s\n", mode, result.OS.PrettyName); err != nil {
+	if _, err := fmt.Fprintf(writer, "%s %s (%s/%s)\n", mode, result.OS.PrettyName, result.Platform.PackageManager, result.Platform.ServiceManager); err != nil {
 		return err
 	}
 	for _, action := range result.Actions {
@@ -283,7 +307,7 @@ func writeUpdateResult(writer io.Writer, result host.UpdateResult, opts *options
 		return json.NewEncoder(writer).Encode(result)
 	}
 	if result.DryRun {
-		if _, err := fmt.Fprintf(writer, "APT %s update plan:\n", result.Mode); err != nil {
+		if _, err := fmt.Fprintf(writer, "%s %s update plan:\n", strings.ToUpper(result.PackageManager), result.Mode); err != nil {
 			return err
 		}
 		for _, command := range result.Commands {
@@ -293,7 +317,7 @@ func writeUpdateResult(writer io.Writer, result host.UpdateResult, opts *options
 		}
 		return nil
 	}
-	_, err := fmt.Fprintf(writer, "APT %s update completed\n", result.Mode)
+	_, err := fmt.Fprintf(writer, "%s %s update completed\n", strings.ToUpper(result.PackageManager), result.Mode)
 	return err
 }
 

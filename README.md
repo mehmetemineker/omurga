@@ -1,12 +1,13 @@
 # Omurga
 
-Omurga is a declarative CLI for provisioning Ubuntu hosts, running Docker
+Omurga is a declarative CLI for provisioning supported Linux hosts, running Docker
 Compose projects, configuring a Caddy gateway, and operating PostgreSQL, Redis,
 backups, secrets, alerts, registries, shared services, and remote hosts.
 
-The v1 command surface is implemented. Host-changing commands target Ubuntu
-22.04 and 24.04, require root, support `--dry-run`, and can run through an SSH
-host profile without an Omurga daemon.
+The v1 command surface is implemented. Official host support covers Ubuntu
+22.04, 24.04, and 26.04 plus Debian 11, 12, and 13. Host-changing commands
+require root, support `--dry-run`, and can run through an SSH host profile
+without an Omurga daemon.
 
 ## Development
 
@@ -26,8 +27,8 @@ docker run --rm -v "$PWD:/workspace" -w /workspace golang:1.23 \
 ```
 
 On PowerShell, replace `$PWD` with `${PWD}`. Most host operations need a real
-Ubuntu VM; manifest validation, rendering, scaffolding, and unit tests work on
-Windows, macOS, and Linux.
+supported Linux VM; manifest validation, rendering, scaffolding, and unit tests
+work on Windows, macOS, and Linux.
 
 ## Project workflow
 
@@ -78,12 +79,18 @@ mode settings.
 ## Host provisioning and remote hosts
 
 ```bash
+omurga host detect
 sudo omurga host init --dry-run
 sudo omurga host init
 sudo omurga host update
 sudo omurga host install all
 omurga doctor
 ```
+
+Distribution-specific behavior is selected from `/etc/os-release`. Provisioning
+is implemented through distribution, package-manager, and service-manager
+interfaces so additional Linux families can be added without rewriting command
+or project lifecycle code. See the [platform provider guide](docs/platform-providers-v1.md).
 
 Remote profiles are user-local and contain no SSH passwords:
 
@@ -133,6 +140,7 @@ with `sudo omurga alert test --channel all`.
 ## Documentation
 
 - [Architecture](docs/architecture-v1.md)
+- [Platform providers](docs/platform-providers-v1.md)
 - [Project manifest](docs/project-manifest-v1.md)
 - [Project lifecycle](docs/project-lifecycle-v1.md)
 - [Secrets](docs/secrets-v1.md)

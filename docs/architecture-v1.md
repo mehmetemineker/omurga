@@ -2,21 +2,22 @@
 
 ## Purpose
 
-Omurga is a declarative CLI that provisions Ubuntu 22.04 and 24.04 hosts and
-manages the day-to-day operation of Docker Compose projects. A manifest defines
-the desired state; Omurga inspects the current state and reaches the desired
-state through safe, repeatable operations.
+Omurga is a declarative CLI that provisions supported Linux hosts and manages
+the day-to-day operation of Docker Compose projects. Ubuntu and Debian are the
+first supported distributions. A manifest defines the desired state; Omurga
+inspects the current state and reaches the desired state through safe,
+repeatable operations.
 
 ## Fixed decisions
 
 - The application is distributed as a single Go binary.
 - Docker Engine and Docker Compose provide the container runtime.
-- Caddy runs on the host as a systemd service.
+- The current Ubuntu and Debian providers run Caddy as a systemd service.
 - Projects are defined by a `version: 1` YAML manifest.
 - Operational state is stored in SQLite; the manifest is the source of truth.
 - Secrets are stored in files encrypted with `age`.
 - Decrypted secrets are stored under `/run/omurga` and mounted read-only.
-- Scheduled jobs run as systemd timers.
+- The current Ubuntu and Debian providers schedule jobs as systemd timers.
 - Restic is the backup engine; PostgreSQL uses `pg_dump` and Redis uses snapshots.
 - The first remote backup targets are S3-compatible storage and SFTP.
 - The first alert channels are Telegram and SMTP email.
@@ -111,7 +112,7 @@ both human-readable and JSON output.
 ## Delivery order
 
 1. CLI, configuration, output, and manifest validation
-2. Ubuntu bootstrap, APT, Docker, Caddy, and basic doctor checks
+2. Linux platform providers, APT, Docker, Caddy, and basic doctor checks
 3. Compose generation and persistent gateway port allocation
 4. The project lifecycle and the encrypted secret store
 5. PostgreSQL and Redis operations
@@ -124,7 +125,9 @@ The v1 implementation includes:
 
 - strict manifest loading, environment merging, and validation
 - idempotent creation of Omurga host directories and the initial host config
-- Ubuntu 22.04 and 24.04 detection
+- Ubuntu 22.04, 24.04, and 26.04 detection and provisioning
+- Debian 11, 12, and 13 detection and provisioning
+- extensible distribution, package-manager, and service-manager contracts
 - safe and full APT upgrade modes with dry-run support
 - idempotent Docker Engine and Compose installation from Docker's official APT repository
 - idempotent Caddy installation from Caddy's official stable APT repository
@@ -157,12 +160,14 @@ convenience script. Repository files and public signing keys are written
 atomically and package services are enabled through systemd.
 
 The installation contracts follow the official
-[Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/) and
+[Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/),
+[Docker Engine on Debian](https://docs.docker.com/engine/install/debian/), and
 [Caddy Debian/Ubuntu package](https://caddyserver.com/docs/install#debian-ubuntu-raspbian)
 documentation.
 
 Project rendering generates artifacts without changing SQLite, Docker, or Caddy
 runtime state. Destructive data removal, Redis flushes, database restores, and
 Restic pruning require explicit flags. Runtime integration must still be
-validated on the target Ubuntu host because container images, DNS, TLS, remote
-repositories, SMTP servers, and Telegram credentials are deployment-specific.
+validated on the target supported Linux host because container images, DNS,
+TLS, remote repositories, SMTP servers, and Telegram credentials are
+deployment-specific.

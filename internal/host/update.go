@@ -12,29 +12,32 @@ type PackageCommand struct {
 }
 
 type UpdateResult struct {
-	Mode     string           `json:"mode"`
-	Commands []PackageCommand `json:"commands"`
-	DryRun   bool             `json:"dryRun"`
+	Mode           string           `json:"mode"`
+	PackageManager string           `json:"packageManager"`
+	Commands       []PackageCommand `json:"commands"`
+	DryRun         bool             `json:"dryRun"`
 }
 
-func UpdatePackages(ctx context.Context, runner Runner, full, dryRun bool) (UpdateResult, error) {
+func UpdatePackages(ctx context.Context, runner Runner, provider DistributionProvider, full, dryRun bool) (UpdateResult, error) {
+	if provider == nil {
+		return UpdateResult{}, fmt.Errorf("distribution provider is required")
+	}
 	mode := "safe"
-	upgradeCommand := "upgrade"
 	if full {
 		mode = "full"
-		upgradeCommand = "full-upgrade"
 	}
+	packages := provider.PackageManager()
 
 	result := UpdateResult{
-		Mode:   mode,
-		DryRun: dryRun,
+		Mode:           mode,
+		PackageManager: packages.Name(),
+		DryRun:         dryRun,
 		Commands: []PackageCommand{
-			{Name: "apt-get", Args: []string{"update"}},
-			{Name: "apt-get", Args: []string{"-y", "-o", "Dpkg::Options::=--force-confold", upgradeCommand}},
+			packages.RefreshCommand(),
+			packages.UpgradeCommand(full, dryRun),
 		},
 	}
 	if dryRun {
-		result.Commands[1].Args = []string{"-s", "-o", "Dpkg::Options::=--force-confold", upgradeCommand}
 		return result, nil
 	}
 

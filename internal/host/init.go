@@ -25,21 +25,19 @@ type InitAction struct {
 }
 
 type InitResult struct {
-	OS      OSRelease    `json:"os"`
-	Actions []InitAction `json:"actions"`
-	DryRun  bool         `json:"dryRun"`
+	OS       OSRelease    `json:"os"`
+	Platform PlatformInfo `json:"platform"`
+	Actions  []InitAction `json:"actions"`
+	DryRun   bool         `json:"dryRun"`
 }
 
 func Initialize(paths Paths, dryRun bool) (InitResult, error) {
-	release, err := LoadOSRelease(paths.OSRelease)
+	release, _, platform, err := DetectPlatform(paths.OSRelease)
 	if err != nil {
-		return InitResult{}, fmt.Errorf("could not detect the operating system: %w", err)
-	}
-	if err := ValidateSupportedUbuntu(release); err != nil {
 		return InitResult{}, err
 	}
 
-	result := InitResult{OS: release, DryRun: dryRun}
+	result := InitResult{OS: release, Platform: platform, DryRun: dryRun}
 	for _, directory := range paths.ManagedDirectories() {
 		action := InitAction{
 			Type:    "directory",

@@ -32,8 +32,9 @@ type CheckSummary struct {
 }
 
 type DoctorReport struct {
-	Checks  []Check      `json:"checks"`
-	Summary CheckSummary `json:"summary"`
+	Platform *PlatformInfo `json:"platform,omitempty"`
+	Checks   []Check       `json:"checks"`
+	Summary  CheckSummary  `json:"summary"`
 }
 
 func (r DoctorReport) ExitCode() int {
@@ -60,17 +61,16 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 		}
 	}
 
-	release, err := LoadOSRelease(paths.OSRelease)
+	release, provider, platform, err := DetectPlatform(paths.OSRelease)
 	if err != nil {
-		add(Check{Name: "operating-system", Status: CheckCritical, Message: fmt.Sprintf("could not read os-release: %v", err)})
-	} else if err := ValidateSupportedUbuntu(release); err != nil {
 		add(Check{Name: "operating-system", Status: CheckCritical, Message: err.Error()})
 	} else {
+		report.Platform = &platform
 		name := release.PrettyName
 		if name == "" {
-			name = "Ubuntu " + release.VersionID
+			name = distributionLabel(release.ID) + " " + release.VersionID
 		}
-		add(Check{Name: "operating-system", Status: CheckPass, Message: name})
+		add(Check{Name: "operating-system", Status: CheckPass, Message: fmt.Sprintf("%s (%s/%s, %s support)", name, platform.PackageManager, platform.ServiceManager, platform.SupportLevel)})
 	}
 
 	root, err := IsRoot(ctx, runner)
@@ -94,12 +94,21 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 		add(Check{Name: "managed-directories", Status: CheckPass, Message: "all managed directories exist"})
 	}
 
-	checkCommand(ctx, runner, &report, "apt", "apt-get", []string{"--version"}, CheckWarning)
+	if provider != nil {
+		packageVersion := provider.PackageManager().VersionCommand()
+		checkCommand(ctx, runner, &report, "package-manager", packageVersion.Name, packageVersion.Args, CheckWarning)
+		serviceVersion := provider.ServiceManager().VersionCommand()
+		checkCommand(ctx, runner, &report, "service-manager", serviceVersion.Name, serviceVersion.Args, CheckCritical)
+	}
 	checkCommand(ctx, runner, &report, "docker", "docker", []string{"info", "--format", "{{.ServerVersion}}"}, CheckCritical)
 	checkCommand(ctx, runner, &report, "docker-compose", "docker", []string{"compose", "version", "--short"}, CheckCritical)
 	checkCommand(ctx, runner, &report, "caddy", "caddy", []string{"version"}, CheckCritical)
-	checkCommand(ctx, runner, &report, "docker-service", "systemctl", []string{"is-active", "--quiet", "docker"}, CheckCritical)
-	checkCommand(ctx, runner, &report, "caddy-service", "systemctl", []string{"is-active", "--quiet", "caddy"}, CheckCritical)
+	if provider != nil {
+		dockerService := provider.ServiceManager().IsActiveCommand("docker")
+		checkCommand(ctx, runner, &report, "docker-service", dockerService.Name, dockerService.Args, CheckCritical)
+		caddyService := provider.ServiceManager().IsActiveCommand("caddy")
+		checkCommand(ctx, runner, &report, "caddy-service", caddyService.Name, caddyService.Args, CheckCritical)
+	}
 	checkCommand(ctx, runner, &report, "caddy-config", "caddy", []string{"validate", "--config", paths.CaddyFile, "--adapter", "caddyfile"}, CheckCritical)
 	checkUnhealthyContainers(ctx, runner, &report)
 
@@ -113,7 +122,11 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 	checkInodes(ctx, runner, paths.StateRoot, &report)
 	checkSecretPermissions(paths, &report)
 	checkStateDatabase(ctx, paths, &report)
-	checkBackupTimers(ctx, paths, runner, &report)
+	var services ServiceManager
+	if provider != nil {
+		services = provider.ServiceManager()
+	}
+	checkBackupTimers(ctx, paths, runner, services, &report)
 	return report
 }
 
@@ -269,17 +282,22 @@ func checkStateDatabase(ctx context.Context, paths Paths, report *DoctorReport) 
 	addToReport(report, Check{Name: "state-database", Status: CheckPass, Message: "SQLite integrity check passed"})
 }
 
-func checkBackupTimers(ctx context.Context, paths Paths, runner Runner, report *DoctorReport) {
+func checkBackupTimers(ctx context.Context, paths Paths, runner Runner, services ServiceManager, report *DoctorReport) {
 	units, _ := filepath.Glob(filepath.Join(paths.SystemdUnits, "omurga-backup-*.timer"))
 	if len(units) == 0 {
 		addToReport(report, Check{Name: "backup-timers", Status: CheckPass, Message: "no scheduled backups configured"})
+		return
+	}
+	if services == nil {
+		addToReport(report, Check{Name: "backup-timers", Status: CheckCritical, Message: "service manager is unavailable"})
 		return
 	}
 	if _, err := runner.LookPath("restic"); err != nil {
 		addToReport(report, Check{Name: "restic", Status: CheckCritical, Message: "restic is required by scheduled backups"})
 		return
 	}
-	output, err := runner.Run(ctx, "systemctl", "list-timers", "--all", "--no-legend", "omurga-backup-*.timer")
+	command := services.ListTimersCommand("omurga-backup-*.timer")
+	output, err := runner.Run(ctx, command.Name, command.Args...)
 	if err != nil || strings.TrimSpace(output) == "" {
 		addToReport(report, Check{Name: "backup-timers", Status: CheckCritical, Message: "scheduled backup timers are not active"})
 		return

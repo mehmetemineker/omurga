@@ -32,7 +32,7 @@ func NewRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "omurga",
-		Short:         "Manage Ubuntu hosts and Docker projects",
+		Short:         "Manage Linux hosts and Docker projects",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
