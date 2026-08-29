@@ -11,6 +11,7 @@ type Paths struct {
 	OSRelease      string
 	ConfigRoot     string
 	ConfigFile     string
+	AlertConfig    string
 	ProjectsConfig string
 	Secrets        string
 	Keys           string
@@ -18,7 +19,10 @@ type Paths struct {
 	StateRoot      string
 	StateDB        string
 	ProjectsState  string
+	SharedServices string
 	BackupStaging  string
+	BackupConfig   string
+	SystemdUnits   string
 	LogRoot        string
 	RuntimeRoot    string
 	RuntimeSecrets string
@@ -51,6 +55,7 @@ func DefaultPaths(root string) Paths {
 		OSRelease:      join("etc/os-release"),
 		ConfigRoot:     join("etc/omurga"),
 		ConfigFile:     join("etc/omurga/config.yaml"),
+		AlertConfig:    join("etc/omurga/alerts.yaml"),
 		ProjectsConfig: join("etc/omurga/projects"),
 		Secrets:        join("etc/omurga/secrets"),
 		Keys:           join("etc/omurga/keys"),
@@ -58,7 +63,10 @@ func DefaultPaths(root string) Paths {
 		StateRoot:      join("var/lib/omurga"),
 		StateDB:        join("var/lib/omurga/state.db"),
 		ProjectsState:  join("var/lib/omurga/projects"),
+		SharedServices: join("var/lib/omurga/services"),
 		BackupStaging:  join("var/backups/omurga/staging"),
+		BackupConfig:   join("etc/omurga/backup"),
+		SystemdUnits:   join("etc/systemd/system"),
 		LogRoot:        join("var/log/omurga"),
 		RuntimeRoot:    join("run/omurga"),
 		RuntimeSecrets: join("run/omurga/secrets"),
@@ -82,7 +90,9 @@ func (p Paths) ManagedDirectories() []Directory {
 		{Path: p.CaddyProjects, Mode: 0o750},
 		{Path: p.StateRoot, Mode: 0o750},
 		{Path: p.ProjectsState, Mode: 0o750},
+		{Path: p.SharedServices, Mode: 0o750},
 		{Path: p.BackupStaging, Mode: 0o700},
+		{Path: p.BackupConfig, Mode: 0o700},
 		{Path: p.LogRoot, Mode: 0o750},
 		{Path: p.RuntimeRoot, Mode: 0o700},
 		{Path: p.RuntimeSecrets, Mode: 0o700},

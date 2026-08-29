@@ -24,6 +24,35 @@ type DeleteProjectResult struct {
 	PortsReleased      int64 `json:"portsReleased"`
 }
 
+func (s *Store) ListDeployments(ctx context.Context) ([]Deployment, error) {
+	if s.version < 2 {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT project, environment, status, revision, manifest_path, compose_path, caddy_path, updated_at, last_error
+FROM deployments
+ORDER BY project, environment
+`)
+	if err != nil {
+		return nil, fmt.Errorf("could not list deployment state: %w", err)
+	}
+	defer rows.Close()
+	var deployments []Deployment
+	for rows.Next() {
+		var deployment Deployment
+		if err := rows.Scan(&deployment.Project, &deployment.Environment, &deployment.Status, &deployment.Revision,
+			&deployment.ManifestPath, &deployment.ComposePath, &deployment.CaddyPath,
+			&deployment.UpdatedAt, &deployment.LastError); err != nil {
+			return nil, fmt.Errorf("could not read deployment state row: %w", err)
+		}
+		deployments = append(deployments, deployment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not finish listing deployment state: %w", err)
+	}
+	return deployments, nil
+}
+
 func (s *Store) PutDeployment(ctx context.Context, deployment Deployment) error {
 	if s.readOnly {
 		return fmt.Errorf("cannot update a deployment using a read-only state database")

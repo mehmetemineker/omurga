@@ -16,6 +16,7 @@ import (
 	"omurga/internal/gateway"
 	"omurga/internal/host"
 	"omurga/internal/manifest"
+	"omurga/internal/secret"
 	"omurga/internal/state"
 )
 
@@ -101,6 +102,16 @@ func (l Lifecycle) Deploy(ctx context.Context, loaded manifest.LoadedProject, dr
 		if err := l.checkPrerequisites(needsCaddy); err != nil {
 			return DeployResult{}, err
 		}
+		materialized, err := secret.NewManager(l.Paths).Materialize(
+			loaded.Project.Name,
+			gateway.EnvironmentKey(loaded.Environment),
+			layout.RuntimeSecrets,
+			requiredSecretSpecs(loaded.Project),
+		)
+		if err != nil {
+			return DeployResult{}, fmt.Errorf("could not materialize encrypted secrets: %w", err)
+		}
+		_ = materialized
 		if err := ensureRuntimeSecrets(layout.RuntimeSecrets, secrets); err != nil {
 			return DeployResult{}, err
 		}
@@ -459,6 +470,36 @@ func requiredSecrets(project manifest.Project) []string {
 	}
 	sort.Strings(secrets)
 	return secrets
+}
+
+func requiredSecretSpecs(project manifest.Project) []secret.MaterializeSpec {
+	specs := make(map[string]secret.MaterializeSpec)
+	for _, service := range project.Services {
+		for _, mount := range service.Secrets {
+			mode, err := secret.ParseMode(mount.Mode)
+			if err != nil {
+				mode = 0o400
+			}
+			specs[mount.Name] = secret.MaterializeSpec{Name: mount.Name, Mode: mode, UID: mount.UID, GID: mount.GID}
+		}
+	}
+	for _, dependency := range project.Dependencies {
+		if dependency.PasswordSecret != "" {
+			if _, exists := specs[dependency.PasswordSecret]; !exists {
+				specs[dependency.PasswordSecret] = secret.MaterializeSpec{Name: dependency.PasswordSecret, Mode: 0o400}
+			}
+		}
+	}
+	names := make([]string, 0, len(specs))
+	for name := range specs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	result := make([]secret.MaterializeSpec, 0, len(names))
+	for _, name := range names {
+		result = append(result, specs[name])
+	}
+	return result
 }
 
 func ensureRuntimeSecrets(root string, secrets []string) error {

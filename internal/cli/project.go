@@ -3,16 +3,21 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
+	"omurga/internal/gateway"
 	"omurga/internal/host"
 	"omurga/internal/manifest"
 	projectruntime "omurga/internal/project"
+	"omurga/internal/state"
 )
 
 func newProjectCommand(opts *options) *cobra.Command {
@@ -26,11 +31,82 @@ func newProjectCommand(opts *options) *cobra.Command {
 		newProjectLogsCommand(opts),
 		newProjectRollbackCommand(opts),
 		newProjectDeleteCommand(opts),
-		pending("list", "List projects"),
-		pending("show", "Show project details"),
+		newProjectListCommand(opts),
+		newProjectShowCommand(opts),
 	)
 	cmd.AddCommand(newProjectValidateCommand(opts))
 	return cmd
+}
+
+func newProjectListCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List deployed projects",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			paths := host.DefaultPaths("/")
+			deployments := []state.Deployment{}
+			if _, err := os.Stat(paths.StateDB); err == nil {
+				store, err := state.OpenReadOnly(cmd.Context(), paths.StateDB)
+				if err != nil {
+					return err
+				}
+				defer store.Close()
+				deployments, err = store.ListDeployments(cmd.Context())
+				if err != nil {
+					return err
+				}
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("could not inspect state database: %w", err)
+			}
+			if opts.quiet {
+				return nil
+			}
+			if opts.json {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(deployments)
+			}
+			for _, deployment := range deployments {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%-24s %-16s %-10s %.12s\n", deployment.Project, deployment.Environment, deployment.Status, deployment.Revision); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+}
+
+func newProjectShowCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show [project-directory-or-manifest]",
+		Short: "Show the resolved project manifest",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			loaded, err := loadProjectArgument(args, opts.environment)
+			if err != nil {
+				return err
+			}
+			if opts.quiet {
+				return nil
+			}
+			result := struct {
+				Manifest    string           `json:"manifest"`
+				Environment string           `json:"environment"`
+				Project     manifest.Project `json:"project"`
+			}{loaded.Path, gateway.EnvironmentKey(loaded.Environment), loaded.Project}
+			if opts.json {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+			}
+			content, err := yaml.Marshal(loaded.Project)
+			if err != nil {
+				return fmt.Errorf("could not encode resolved project: %w", err)
+			}
+			_, err = cmd.OutOrStdout().Write(content)
+			return err
+		},
+	}
 }
 
 func newProjectLogsCommand(opts *options) *cobra.Command {
@@ -176,7 +252,7 @@ func newProjectDeployCommand(opts *options) *cobra.Command {
 			lifecycle := projectruntime.NewLifecycle(host.DefaultPaths("/"), runner)
 			result, err := lifecycle.Deploy(cmd.Context(), loaded, opts.dryRun)
 			if err != nil {
-				return err
+				return errors.Join(err, notifyProjectEvent(cmd.Context(), loaded, "deploy-failed", err))
 			}
 			return writeDeployResult(cmd.OutOrStdout(), result, opts)
 		},

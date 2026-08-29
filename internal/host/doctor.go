@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+
+	"omurga/internal/state"
 )
 
 type CheckStatus string
@@ -97,6 +100,8 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 	checkCommand(ctx, runner, &report, "caddy", "caddy", []string{"version"}, CheckCritical)
 	checkCommand(ctx, runner, &report, "docker-service", "systemctl", []string{"is-active", "--quiet", "docker"}, CheckCritical)
 	checkCommand(ctx, runner, &report, "caddy-service", "systemctl", []string{"is-active", "--quiet", "caddy"}, CheckCritical)
+	checkCommand(ctx, runner, &report, "caddy-config", "caddy", []string{"validate", "--config", paths.CaddyFile, "--adapter", "caddyfile"}, CheckCritical)
+	checkUnhealthyContainers(ctx, runner, &report)
 
 	if _, err := os.Stat(paths.RebootRequired); err == nil {
 		addToReport(&report, Check{Name: "reboot", Status: CheckWarning, Message: "a system reboot is required"})
@@ -105,7 +110,27 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 	}
 
 	checkDisk(ctx, runner, paths.StateRoot, &report)
+	checkInodes(ctx, runner, paths.StateRoot, &report)
+	checkSecretPermissions(paths, &report)
+	checkStateDatabase(ctx, paths, &report)
+	checkBackupTimers(ctx, paths, runner, &report)
 	return report
+}
+
+func checkUnhealthyContainers(ctx context.Context, runner Runner, report *DoctorReport) {
+	if _, err := runner.LookPath("docker"); err != nil {
+		return
+	}
+	output, err := runner.Run(ctx, "docker", "ps", "--filter", "health=unhealthy", "--format", "{{.Names}}")
+	if err != nil {
+		addToReport(report, Check{Name: "container-health", Status: CheckWarning, Message: err.Error()})
+		return
+	}
+	if strings.TrimSpace(output) != "" {
+		addToReport(report, Check{Name: "container-health", Status: CheckCritical, Message: "unhealthy containers: " + strings.Join(strings.Fields(output), ", ")})
+		return
+	}
+	addToReport(report, Check{Name: "container-health", Status: CheckPass, Message: "no unhealthy containers"})
 }
 
 func checkCommand(ctx context.Context, runner Runner, report *DoctorReport, checkName, command string, args []string, missingStatus CheckStatus) {
@@ -158,6 +183,108 @@ func checkDisk(ctx context.Context, runner Runner, path string, report *DoctorRe
 		status = CheckWarning
 	}
 	addToReport(report, Check{Name: "disk", Status: status, Message: fmt.Sprintf("disk usage is %d%%", percentage)})
+}
+
+func checkInodes(ctx context.Context, runner Runner, path string, report *DoctorReport) {
+	if _, err := runner.LookPath("df"); err != nil {
+		addToReport(report, Check{Name: "inodes", Status: CheckWarning, Message: "df is not available"})
+		return
+	}
+	output, err := runner.Run(ctx, "df", "-Pi", path)
+	if err != nil {
+		addToReport(report, Check{Name: "inodes", Status: CheckWarning, Message: err.Error()})
+		return
+	}
+	percentage, err := parseDFPercentage(output)
+	if err != nil {
+		addToReport(report, Check{Name: "inodes", Status: CheckWarning, Message: err.Error()})
+		return
+	}
+	status := CheckPass
+	if percentage >= 90 {
+		status = CheckCritical
+	} else if percentage >= 80 {
+		status = CheckWarning
+	}
+	addToReport(report, Check{Name: "inodes", Status: status, Message: fmt.Sprintf("inode usage is %d%%", percentage)})
+}
+
+func parseDFPercentage(output string) (int, error) {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) < 2 {
+		return 0, fmt.Errorf("could not parse filesystem usage")
+	}
+	fields := strings.Fields(lines[len(lines)-1])
+	if len(fields) < 5 {
+		return 0, fmt.Errorf("could not parse filesystem usage")
+	}
+	value, err := strconv.Atoi(strings.TrimSuffix(fields[4], "%"))
+	if err != nil {
+		return 0, fmt.Errorf("could not parse filesystem usage")
+	}
+	return value, nil
+}
+
+func checkSecretPermissions(paths Paths, report *DoctorReport) {
+	problems := []string{}
+	for _, root := range []string{paths.Secrets, paths.Keys, paths.RuntimeSecrets} {
+		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				if !os.IsNotExist(err) {
+					problems = append(problems, path)
+				}
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil || (entry.IsDir() && info.Mode().Perm()&0o077 != 0) || (!entry.IsDir() && info.Mode().Perm()&0o077 != 0) {
+				problems = append(problems, path)
+			}
+			return nil
+		})
+	}
+	if len(problems) > 0 {
+		addToReport(report, Check{Name: "secret-permissions", Status: CheckCritical, Message: fmt.Sprintf("%d secret or key paths have unsafe permissions", len(problems))})
+		return
+	}
+	addToReport(report, Check{Name: "secret-permissions", Status: CheckPass, Message: "secret and key permissions are restricted"})
+}
+
+func checkStateDatabase(ctx context.Context, paths Paths, report *DoctorReport) {
+	if _, err := os.Stat(paths.StateDB); os.IsNotExist(err) {
+		addToReport(report, Check{Name: "state-database", Status: CheckPass, Message: "state database has not been created yet"})
+		return
+	} else if err != nil {
+		addToReport(report, Check{Name: "state-database", Status: CheckCritical, Message: err.Error()})
+		return
+	}
+	store, err := state.OpenReadOnly(ctx, paths.StateDB)
+	if err == nil {
+		defer store.Close()
+		err = store.IntegrityCheck(ctx)
+	}
+	if err != nil {
+		addToReport(report, Check{Name: "state-database", Status: CheckCritical, Message: err.Error()})
+		return
+	}
+	addToReport(report, Check{Name: "state-database", Status: CheckPass, Message: "SQLite integrity check passed"})
+}
+
+func checkBackupTimers(ctx context.Context, paths Paths, runner Runner, report *DoctorReport) {
+	units, _ := filepath.Glob(filepath.Join(paths.SystemdUnits, "omurga-backup-*.timer"))
+	if len(units) == 0 {
+		addToReport(report, Check{Name: "backup-timers", Status: CheckPass, Message: "no scheduled backups configured"})
+		return
+	}
+	if _, err := runner.LookPath("restic"); err != nil {
+		addToReport(report, Check{Name: "restic", Status: CheckCritical, Message: "restic is required by scheduled backups"})
+		return
+	}
+	output, err := runner.Run(ctx, "systemctl", "list-timers", "--all", "--no-legend", "omurga-backup-*.timer")
+	if err != nil || strings.TrimSpace(output) == "" {
+		addToReport(report, Check{Name: "backup-timers", Status: CheckCritical, Message: "scheduled backup timers are not active"})
+		return
+	}
+	addToReport(report, Check{Name: "backup-timers", Status: CheckPass, Message: fmt.Sprintf("%d backup timer unit(s) configured", len(units))})
 }
 
 func addToReport(report *DoctorReport, check Check) {

@@ -97,6 +97,17 @@ func (s *Store) ReadOnly() bool {
 	return s != nil && s.readOnly
 }
 
+func (s *Store) IntegrityCheck(ctx context.Context) error {
+	var result string
+	if err := s.db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {
+		return fmt.Errorf("could not run state database integrity check: %w", err)
+	}
+	if result != "ok" {
+		return fmt.Errorf("state database integrity check failed: %s", result)
+	}
+	return nil
+}
+
 func (s *Store) validateSchema(ctx context.Context) error {
 	var version int
 	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {

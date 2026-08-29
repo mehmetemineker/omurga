@@ -66,7 +66,7 @@ route is preserved when a health check fails.
 
 ## Secret model
 
-A secret value is read from a hidden terminal prompt and is never passed as a
+A secret value is read from a file or standard input and is never passed as a
 command argument. The persistent store is encrypted with `age`. During a
 deployment, values are decrypted under `/run/omurga/secrets`, the UID, GID, and
 file mode from the manifest are applied, and each file is mounted under
@@ -118,9 +118,9 @@ both human-readable and JSON output.
 6. Restic backups, systemd timers, and alert channels
 7. Multi-host management over SSH
 
-## Current implementation status
+## Implementation status
 
-The following foundation is implemented:
+The v1 implementation includes:
 
 - strict manifest loading, environment merging, and validation
 - idempotent creation of Omurga host directories and the initial host config
@@ -141,6 +141,15 @@ The following foundation is implemented:
 - Compose health waiting and pre-reload Caddy validation
 - automatic artifact and runtime rollback on deployment failure
 - project-scoped PostgreSQL and Redis Compose services
+- encrypted age secret stores and deployment-time materialization
+- project and environment inspection and non-secret environment editing
+- project-scoped PostgreSQL and Redis operational commands
+- shared Docker services and registry profiles
+- Restic backup, restore, retention, integrity, and systemd timer operations
+- Telegram and TLS SMTP alert delivery
+- SSH host profiles and daemonless remote command forwarding
+- expanded doctor checks for SQLite, secret permissions, container health,
+  filesystem capacity, inodes, gateway configuration, Restic, and backup timers
 
 The installer refuses to remove conflicting distribution Docker packages unless
 `--replace-conflicting-docker` is explicitly provided. It does not use Docker's
@@ -153,6 +162,7 @@ The installation contracts follow the official
 documentation.
 
 Project rendering generates artifacts without changing SQLite, Docker, or Caddy
-runtime state. The local-host project lifecycle is implemented through safe
-deletion. Project listing, encrypted secret materialization, and PostgreSQL and
-Redis operational commands are the next milestones.
+runtime state. Destructive data removal, Redis flushes, database restores, and
+Restic pruning require explicit flags. Runtime integration must still be
+validated on the target Ubuntu host because container images, DNS, TLS, remote
+repositories, SMTP servers, and Telegram credentials are deployment-specific.

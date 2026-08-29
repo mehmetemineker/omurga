@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -43,6 +44,7 @@ func Validate(project Project) error {
 	}
 
 	serviceNames := sortedKeys(project.Services)
+	secretDefinitions := map[string]SecretMount{}
 	for _, name := range serviceNames {
 		service := project.Services[name]
 		path := "services." + name
@@ -82,6 +84,23 @@ func Validate(project Project) error {
 			secretNames[secret.Name] = struct{}{}
 			if !strings.HasPrefix(secret.Target, "/run/secrets/") {
 				add(secretPath+".target", "must be under /run/secrets/")
+			}
+			if secret.Mode != "" {
+				mode, err := strconv.ParseUint(secret.Mode, 8, 9)
+				if err != nil || mode > 0o777 {
+					add(secretPath+".mode", "must be an octal permission between 000 and 777")
+				}
+			}
+			if secret.UID < 0 {
+				add(secretPath+".uid", "cannot be negative")
+			}
+			if secret.GID < 0 {
+				add(secretPath+".gid", "cannot be negative")
+			}
+			if existing, exists := secretDefinitions[secret.Name]; exists && (existing.Mode != secret.Mode || existing.UID != secret.UID || existing.GID != secret.GID) {
+				add(secretPath, "the same secret must use identical mode, uid, and gid in every service")
+			} else {
+				secretDefinitions[secret.Name] = secret
 			}
 		}
 

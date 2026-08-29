@@ -133,3 +133,11 @@ func createInitializedPaths(t *testing.T) Paths {
 func commandKey(name string, args ...string) string {
 	return strings.TrimSpace(name + " " + strings.Join(args, " "))
 }
+
+func TestMergedEnvironmentReplacesExistingValues(t *testing.T) {
+	actual := mergedEnvironment([]string{"PATH=/bin", "AWS_ACCESS_KEY_ID=old"}, map[string]string{"AWS_ACCESS_KEY_ID": "new"})
+	joined := strings.Join(actual, "\n")
+	if strings.Contains(joined, "AWS_ACCESS_KEY_ID=old") || !strings.Contains(joined, "AWS_ACCESS_KEY_ID=new") {
+		t.Fatalf("unexpected merged environment: %#v", actual)
+	}
+}
