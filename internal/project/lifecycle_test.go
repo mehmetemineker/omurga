@@ -71,6 +71,44 @@ func TestDeployDryRunDoesNotMutateFilesystemOrState(t *testing.T) {
 	}
 }
 
+func TestEnsureCaddyImportMigratesLegacyImport(t *testing.T) {
+	root := t.TempDir()
+	caddyFile := filepath.Join(root, "etc", "caddy", "Caddyfile")
+	newDirectory := filepath.Dir(caddyFile)
+	for _, legacyImport := range []string{"/etc/omurga/caddy/projects/*.caddy", "/etc/caddy/omurga/projects/*.caddy"} {
+		writeTestFile(t, caddyFile, []byte(":80 { respond \"ok\" }\n\nimport "+legacyImport+"\n"), 0o644)
+
+		if err := ensureCaddyImport(caddyFile, newDirectory); err != nil {
+			t.Fatalf("ensureCaddyImport() error = %v", err)
+		}
+		content := readTestFile(t, caddyFile)
+		if strings.Contains(content, legacyImport) || !strings.Contains(content, "import "+filepath.ToSlash(filepath.Join(newDirectory, "omurga-*.caddy"))) {
+			t.Fatalf("legacy Caddy import was not migrated:\n%s", content)
+		}
+	}
+}
+
+func TestEnsureCaddyImportRepairsCaddyRuntimePermissions(t *testing.T) {
+	root := t.TempDir()
+	caddyDirectory := filepath.Join(root, "etc", "caddy")
+	caddyFile := filepath.Join(caddyDirectory, "Caddyfile")
+	importLine := "import " + filepath.ToSlash(filepath.Join(caddyDirectory, "omurga-*.caddy"))
+	writeTestFile(t, caddyFile, []byte(":80 { respond \"ok\" }\n\n"+importLine+"\n"), 0o600)
+	if err := os.Chmod(caddyDirectory, 0o700); err != nil {
+		t.Fatalf("could not restrict test Caddy directory: %v", err)
+	}
+
+	if err := ensureCaddyImport(caddyFile, caddyDirectory); err != nil {
+		t.Fatalf("ensureCaddyImport() error = %v", err)
+	}
+	if info, err := os.Stat(caddyDirectory); err != nil || info.Mode().Perm() != caddyDirectoryMode {
+		t.Fatalf("Caddy directory mode = %v, %v; want %v", infoMode(info), err, caddyDirectoryMode)
+	}
+	if info, err := os.Stat(caddyFile); err != nil || info.Mode().Perm() != caddyArtifactMode {
+		t.Fatalf("Caddyfile mode = %v, %v; want %v", infoMode(info), err, caddyArtifactMode)
+	}
+}
+
 func TestDeployStatusAndControls(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -101,6 +139,9 @@ func TestDeployStatusAndControls(t *testing.T) {
 	caddy := readTestFile(t, layout.Caddy)
 	if !strings.Contains(caddy, "demo.example.com") {
 		t.Fatalf("unexpected Caddy artifact:\n%s", caddy)
+	}
+	if info, err := os.Stat(filepath.Dir(layout.Caddy)); err != nil || info.Mode().Perm() != caddyDirectoryMode {
+		t.Fatalf("Caddy directory mode = %v, %v; want %v", infoMode(info), err, caddyDirectoryMode)
 	}
 	secondResult, err := lifecycle.Deploy(ctx, loaded, false)
 	if err != nil {
@@ -461,6 +502,13 @@ func readTestFile(t *testing.T, path string) string {
 		t.Fatalf("could not read test file %s: %v", path, err)
 	}
 	return string(data)
+}
+
+func infoMode(info os.FileInfo) os.FileMode {
+	if info == nil {
+		return 0
+	}
+	return info.Mode().Perm()
 }
 
 func containsArgument(args []string, expected string) bool {

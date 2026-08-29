@@ -97,21 +97,21 @@ name: %s
 
 services:
   app:
-    image: ghcr.io/example/%s:latest
+    image: nginx:alpine
     pullPolicy: if-not-present
     expose:
-      - 3000
+      - 80
     environment:
       APP_ENV: development
     resources:
-      cpus: "1.0"
-      memory: 512M
+      cpus: "0.25"
+      memory: 64M
     logging:
       driver: json-file
-      maxSize: 100M
+      maxSize: 20M
       maxFiles: 5
     healthcheck:
-      command: [CMD, wget, --spider, http://localhost:3000/health]
+      command: [CMD, wget, --spider, http://localhost/]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -120,9 +120,9 @@ gateway:
   routes:
     - domain: %s.localhost
       service: app
-      port: 3000
+      port: 80
       https: false
-`, name, name, name)
+`, name, name)
 	production := fmt.Sprintf(`host: production
 
 services:
@@ -134,7 +134,7 @@ gateway:
   routes:
     - domain: %s.example.com
       service: app
-      port: 3000
+      port: 80
       https: true
 `, name)
 	if err := WriteArtifact(result.Manifest, []byte(base), 0o640); err != nil {

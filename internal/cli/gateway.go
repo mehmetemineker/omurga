@@ -42,7 +42,7 @@ func newGatewayListCommand(opts *options) *cobra.Command {
 		}
 		var routes []string
 		for _, entry := range entries {
-			if !entry.IsDir() && filepath.Ext(entry.Name()) == ".caddy" && !strings.HasSuffix(entry.Name(), ".previous") {
+			if !entry.IsDir() && strings.HasPrefix(entry.Name(), "omurga-") && filepath.Ext(entry.Name()) == ".caddy" && !strings.HasSuffix(entry.Name(), ".previous") {
 				routes = append(routes, entry.Name())
 			}
 		}

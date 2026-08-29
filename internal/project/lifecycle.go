@@ -20,7 +20,11 @@ import (
 	"omurga/internal/state"
 )
 
-const defaultDeployWaitSeconds = 120
+const (
+	defaultDeployWaitSeconds = 120
+	caddyDirectoryMode       = 0o755
+	caddyArtifactMode        = 0o644
+)
 
 type Lifecycle struct {
 	Paths    host.Paths
@@ -92,7 +96,7 @@ func (l Lifecycle) serviceManager() host.ServiceManager {
 func (l Lifecycle) Layout(projectName, environment string) DeploymentLayout {
 	environment = gateway.EnvironmentKey(environment)
 	root := filepath.Join(l.Paths.ProjectsState, projectName, environment)
-	caddy := filepath.Join(l.Paths.CaddyProjects, projectName+"-"+environment+".caddy")
+	caddy := filepath.Join(l.Paths.CaddyProjects, "omurga-"+projectName+"-"+environment+".caddy")
 	return DeploymentLayout{
 		Root:            root,
 		Compose:         filepath.Join(root, "compose.yaml"),
@@ -355,7 +359,7 @@ func (l Lifecycle) applyCaddy(ctx context.Context, layout DeploymentLayout, cont
 		if err := os.Remove(layout.Caddy); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("could not remove obsolete Caddy project artifact: %w", err)
 		}
-	} else if err := WriteArtifact(layout.Caddy, content, 0o640); err != nil {
+	} else if err := WriteArtifact(layout.Caddy, content, caddyArtifactMode); err != nil {
 		return fmt.Errorf("could not write Caddy project artifact: %w", err)
 	}
 	if err := ensureCaddyImport(l.Paths.CaddyFile, l.Paths.CaddyProjects); err != nil {
@@ -363,12 +367,12 @@ func (l Lifecycle) applyCaddy(ctx context.Context, layout DeploymentLayout, cont
 		return err
 	}
 	if _, err := l.Runner.Run(ctx, "caddy", "validate", "--config", l.Paths.CaddyFile, "--adapter", "caddyfile"); err != nil {
-		restoreErr := errors.Join(restoreFile(layout.Caddy, snippetSnapshot), restoreFile(l.Paths.CaddyFile, baseSnapshot))
+		restoreErr := errors.Join(restoreFile(layout.Caddy, snippetSnapshot), restoreCaddyFile(l.Paths.CaddyFile, baseSnapshot))
 		return errors.Join(fmt.Errorf("generated Caddy configuration is invalid: %w", err), restoreErr)
 	}
 	reload := l.serviceManager().ReloadCommand("caddy")
 	if _, err := l.Runner.Run(ctx, reload.Name, reload.Args...); err != nil {
-		restoreErr := errors.Join(restoreFile(layout.Caddy, snippetSnapshot), restoreFile(l.Paths.CaddyFile, baseSnapshot))
+		restoreErr := errors.Join(restoreFile(layout.Caddy, snippetSnapshot), restoreCaddyFile(l.Paths.CaddyFile, baseSnapshot))
 		if restoreErr == nil {
 			_, restoreErr = l.Runner.Run(ctx, reload.Name, reload.Args...)
 		}
@@ -426,7 +430,9 @@ func deploymentPlan(layout DeploymentLayout, project manifest.Project, environme
 func prepareDeploymentDirectories(layout DeploymentLayout, project manifest.Project, needsCaddy bool) error {
 	directories := map[string]fs.FileMode{layout.Root: 0o750}
 	if needsCaddy {
-		directories[filepath.Dir(layout.Caddy)] = 0o750
+		// The Caddy service runs as an unprivileged user and must be able to
+		// traverse this directory to read the base file and project snippets.
+		directories[filepath.Dir(layout.Caddy)] = caddyDirectoryMode
 	}
 	for _, service := range project.Services {
 		for _, volume := range service.Volumes {
@@ -537,23 +543,65 @@ func ensureRuntimeSecrets(root string, secrets []string) error {
 }
 
 func ensureCaddyImport(caddyFile, projectDirectory string) error {
+	if err := ensureCaddyRuntimeAccess(caddyFile); err != nil {
+		return err
+	}
 	content, err := os.ReadFile(caddyFile)
 	if err != nil {
 		return fmt.Errorf("could not read Caddyfile: %w", err)
 	}
-	importLine := "import " + filepath.ToSlash(filepath.Join(projectDirectory, "*.caddy"))
-	for _, line := range strings.Split(string(content), "\n") {
-		if strings.TrimSpace(line) == importLine {
+	pattern := "*.caddy"
+	if filepath.Clean(projectDirectory) == filepath.Clean(filepath.Dir(caddyFile)) {
+		pattern = "omurga-*.caddy"
+	}
+	importLine := "import " + filepath.ToSlash(filepath.Join(projectDirectory, pattern))
+	lines := strings.Split(string(content), "\n")
+	legacyImportLines := map[string]bool{
+		"import /etc/omurga/caddy/projects/*.caddy": true,
+		"import /etc/caddy/omurga/projects/*.caddy": true,
+	}
+	found := false
+	removedLegacy := false
+	updatedLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if legacyImportLines[trimmed] {
+			removedLegacy = true
+			continue
+		}
+		if trimmed == importLine {
+			found = true
+		}
+		updatedLines = append(updatedLines, line)
+	}
+	if found && !removedLegacy {
+		if len(updatedLines) == len(lines) {
 			return nil
 		}
 	}
-	updated := append([]byte(nil), content...)
-	if len(updated) > 0 && updated[len(updated)-1] != '\n' {
-		updated = append(updated, '\n')
+	updated := []byte(strings.Join(updatedLines, "\n"))
+	if !found {
+		if len(updated) > 0 && updated[len(updated)-1] != '\n' {
+			updated = append(updated, '\n')
+		}
+		updated = append(updated, []byte("\n# Omurga managed project routes\n"+importLine+"\n")...)
 	}
-	updated = append(updated, []byte("\n# Omurga managed project routes\n"+importLine+"\n")...)
-	if err := WriteArtifact(caddyFile, updated, 0o644); err != nil {
+	if err := WriteArtifact(caddyFile, updated, caddyArtifactMode); err != nil {
+		if removedLegacy {
+			return fmt.Errorf("could not migrate the Omurga project import in Caddyfile: %w", err)
+		}
 		return fmt.Errorf("could not add the Omurga project import to Caddyfile: %w", err)
+	}
+	return nil
+}
+
+func ensureCaddyRuntimeAccess(caddyFile string) error {
+	directory := filepath.Dir(caddyFile)
+	if err := os.Chmod(directory, caddyDirectoryMode); err != nil {
+		return fmt.Errorf("could not make Caddy configuration directory traversable at %s: %w", directory, err)
+	}
+	if err := os.Chmod(caddyFile, caddyArtifactMode); err != nil {
+		return fmt.Errorf("could not make Caddyfile readable at %s: %w", caddyFile, err)
 	}
 	return nil
 }
@@ -593,6 +641,16 @@ func restoreFile(path string, snapshot fileSnapshot) error {
 		return fmt.Errorf("could not restore artifact %s: %w", path, err)
 	}
 	return nil
+}
+
+func restoreCaddyFile(path string, snapshot fileSnapshot) error {
+	if err := restoreFile(path, snapshot); err != nil {
+		return err
+	}
+	if !snapshot.Exists {
+		return nil
+	}
+	return ensureCaddyRuntimeAccess(path)
 }
 
 func persistPrevious(path string, snapshot fileSnapshot) error {

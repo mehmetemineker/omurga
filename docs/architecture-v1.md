@@ -32,7 +32,7 @@ repeatable operations.
 /etc/omurga/projects/<project>/environments/<environment>.yaml
 /etc/omurga/secrets/<project>/<environment>.age
 /etc/omurga/keys/identity.agekey
-/etc/omurga/caddy/projects/<project>-<environment>.caddy
+/etc/caddy/omurga-<project>-<environment>.caddy
 /var/lib/omurga/state.db
 /var/lib/omurga/projects/<project>/<environment>/compose.yaml
 /var/lib/omurga/projects/<project>/<environment>/data/
