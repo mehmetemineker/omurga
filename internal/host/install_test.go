@@ -159,6 +159,56 @@ func TestInstallCaddyConfiguresOfficialRepository(t *testing.T) {
 	}
 }
 
+func TestInstallResticUsesDistributionPackage(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	runner := &fakeRunner{outputs: map[string]string{}, errors: map[string]error{}}
+	installer := Installer{Paths: paths, Runner: runner, Downloader: fakeDownloader{}}
+
+	result, err := installer.InstallRestic(context.Background(), supportedRelease(), InstallOptions{})
+	if err != nil {
+		t.Fatalf("InstallRestic() error = %v", err)
+	}
+	if result.Component != "restic" || result.AlreadyInstalled {
+		t.Fatalf("unexpected install result: %#v", result)
+	}
+	if !containsCommand(runner.calls, "apt-get install -y restic") || !containsCommand(runner.calls, "restic version") {
+		t.Fatalf("unexpected Restic installation commands: %#v", runner.calls)
+	}
+}
+
+func TestInstallResticIsNoOpWhenHealthy(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	runner := &fakeRunner{
+		available: map[string]bool{"restic": true},
+		outputs: map[string]string{
+			commandKey("dpkg-query", "-W", "-f=${Status}", "restic"): "install ok installed",
+			commandKey("restic", "version"):                          "restic 0.17.3 compiled with go1.23",
+		},
+		errors: map[string]error{},
+	}
+	installer := Installer{Paths: paths, Runner: runner, Downloader: fakeDownloader{}}
+
+	result, err := installer.InstallRestic(context.Background(), supportedRelease(), InstallOptions{})
+	if err != nil {
+		t.Fatalf("InstallRestic() error = %v", err)
+	}
+	if !result.AlreadyInstalled {
+		t.Fatalf("expected a no-op installation result: %#v", result)
+	}
+	if containsCommand(runner.calls, "apt-get ") {
+		t.Fatalf("healthy Restic installation executed APT: %#v", runner.calls)
+	}
+}
+
+func containsCommand(calls []string, prefix string) bool {
+	for _, call := range calls {
+		if strings.HasPrefix(call, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestInstallDockerConfiguresOfficialDebianRepository(t *testing.T) {
 	paths := DefaultPaths(t.TempDir())
 	runner := &fakeRunner{outputs: map[string]string{commandKey("dpkg", "--print-architecture"): "arm64"}, errors: map[string]error{}}

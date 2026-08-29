@@ -84,6 +84,7 @@ sudo omurga host init --dry-run
 sudo omurga host init
 sudo omurga host update
 sudo omurga host install all
+sudo omurga host install restic
 omurga doctor
 ```
 

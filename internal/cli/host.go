@@ -31,6 +31,7 @@ func newHostCommand(opts *options) *cobra.Command {
 func newHostInitCommand(opts *options) *cobra.Command {
 	var skipDocker bool
 	var skipCaddy bool
+	var skipRestic bool
 	var replaceDockerConflicts bool
 
 	cmd := &cobra.Command{
@@ -61,7 +62,7 @@ func newHostInitCommand(opts *options) *cobra.Command {
 			installations, err := runHostInstallers(cmd.Context(), paths, result.OS, host.InstallOptions{
 				DryRun:                 opts.dryRun,
 				ReplaceDockerConflicts: replaceDockerConflicts,
-			}, !skipDocker, !skipCaddy)
+			}, !skipDocker, !skipCaddy, !skipRestic)
 			if err != nil {
 				return err
 			}
@@ -70,6 +71,7 @@ func newHostInitCommand(opts *options) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&skipDocker, "skip-docker", false, "do not install Docker")
 	cmd.Flags().BoolVar(&skipCaddy, "skip-caddy", false, "do not install Caddy")
+	cmd.Flags().BoolVar(&skipRestic, "skip-restic", false, "do not install Restic")
 	cmd.Flags().BoolVar(&replaceDockerConflicts, "replace-conflicting-docker", false, "remove conflicting distribution Docker packages before installing Docker CE")
 	return cmd
 }
@@ -77,17 +79,17 @@ func newHostInitCommand(opts *options) *cobra.Command {
 func newHostInstallCommand(opts *options) *cobra.Command {
 	var replaceDockerConflicts bool
 	cmd := &cobra.Command{
-		Use:       "install [docker|caddy|all]",
+		Use:       "install [docker|caddy|restic|all]",
 		Short:     "Install or repair host infrastructure components",
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"docker", "caddy", "all"},
+		ValidArgs: []string{"docker", "caddy", "restic", "all"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireLocalHost(opts.host); err != nil {
 				return err
 			}
 			component := args[0]
-			if component != "docker" && component != "caddy" && component != "all" {
-				return fmt.Errorf("component must be docker, caddy, or all")
+			if component != "docker" && component != "caddy" && component != "restic" && component != "all" {
+				return fmt.Errorf("component must be docker, caddy, restic, or all")
 			}
 
 			paths := host.DefaultPaths("/")
@@ -108,7 +110,7 @@ func newHostInstallCommand(opts *options) *cobra.Command {
 			installations, err := runHostInstallers(cmd.Context(), paths, release, host.InstallOptions{
 				DryRun:                 opts.dryRun,
 				ReplaceDockerConflicts: replaceDockerConflicts,
-			}, component == "docker" || component == "all", component == "caddy" || component == "all")
+			}, component == "docker" || component == "all", component == "caddy" || component == "all", component == "restic" || component == "all")
 			if err != nil {
 				return err
 			}
@@ -279,9 +281,9 @@ func writeInstallResults(writer io.Writer, results []host.InstallResult, opts *o
 	return nil
 }
 
-func runHostInstallers(ctx context.Context, paths host.Paths, release host.OSRelease, options host.InstallOptions, installDocker, installCaddy bool) ([]host.InstallResult, error) {
+func runHostInstallers(ctx context.Context, paths host.Paths, release host.OSRelease, options host.InstallOptions, installDocker, installCaddy, installRestic bool) ([]host.InstallResult, error) {
 	installer := host.NewInstaller(paths)
-	results := make([]host.InstallResult, 0, 2)
+	results := make([]host.InstallResult, 0, 3)
 	if installDocker {
 		result, err := installer.InstallDocker(ctx, release, options)
 		if err != nil {
@@ -293,6 +295,13 @@ func runHostInstallers(ctx context.Context, paths host.Paths, release host.OSRel
 		result, err := installer.InstallCaddy(ctx, release, options)
 		if err != nil {
 			return results, fmt.Errorf("Caddy installation failed: %w", err)
+		}
+		results = append(results, result)
+	}
+	if installRestic {
+		result, err := installer.InstallRestic(ctx, release, options)
+		if err != nil {
+			return results, fmt.Errorf("Restic installation failed: %w", err)
 		}
 		results = append(results, result)
 	}
