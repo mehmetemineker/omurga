@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -90,6 +91,27 @@ func TestDoctorReportsMissingDockerAsCritical(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsCaddyServiceConfigAccessFailure(t *testing.T) {
+	paths := createInitializedPaths(t)
+	runner := healthyRunner()
+	command := commandKey("runuser", "-u", "caddy", "--", "caddy", "validate", "--config", paths.CaddyFile, "--adapter", "caddyfile")
+	runner.errors[command] = errors.New("permission denied")
+
+	report := RunDoctor(context.Background(), paths, runner)
+	if report.ExitCode() != 2 {
+		t.Fatalf("expected critical report, got: %#v", report)
+	}
+	for _, check := range report.Checks {
+		if check.Name == "caddy-service-config" {
+			if check.Status != CheckCritical || !strings.Contains(check.Message, "permission denied") {
+				t.Fatalf("unexpected Caddy service config check: %#v", check)
+			}
+			return
+		}
+	}
+	t.Fatal("Caddy service config check was not reported")
+}
+
 func healthyRunner() *fakeRunner {
 	return &fakeRunner{
 		available: map[string]bool{
@@ -97,6 +119,7 @@ func healthyRunner() *fakeRunner {
 			"docker":    true,
 			"caddy":     true,
 			"df":        true,
+			"runuser":   true,
 			"systemctl": true,
 		},
 		outputs: map[string]string{

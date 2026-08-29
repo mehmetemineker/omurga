@@ -95,9 +95,9 @@ successful only after it reaches the remote destination. Default retention is
 - `2`: critical failure present
 
 Doctor checks the operating system, reboot requirements, disk and inode usage,
-Docker, Caddy, container health, DNS and TLS, PostgreSQL, Redis, secret file
-permissions, backup age, remote destinations, and systemd timers. It provides
-both human-readable and JSON output.
+Docker, Caddy, Caddy's service-account access to its configuration, container
+health, secret file permissions, state integrity, and systemd backup timers.
+It provides both human-readable and JSON output.
 
 ## Security boundaries
 

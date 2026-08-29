@@ -110,6 +110,7 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 		checkCommand(ctx, runner, &report, "caddy-service", caddyService.Name, caddyService.Args, CheckCritical)
 	}
 	checkCommand(ctx, runner, &report, "caddy-config", "caddy", []string{"validate", "--config", paths.CaddyFile, "--adapter", "caddyfile"}, CheckCritical)
+	checkCaddyServiceConfig(ctx, paths, runner, root, &report)
 	checkUnhealthyContainers(ctx, runner, &report)
 
 	if _, err := os.Stat(paths.RebootRequired); err == nil {
@@ -128,6 +129,42 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 	}
 	checkBackupTimers(ctx, paths, runner, services, &report)
 	return report
+}
+
+func checkCaddyServiceConfig(ctx context.Context, paths Paths, runner Runner, root bool, report *DoctorReport) {
+	if _, err := runner.LookPath("caddy"); err != nil {
+		return
+	}
+	if !root {
+		addToReport(report, Check{
+			Name:    "caddy-service-config",
+			Status:  CheckWarning,
+			Message: "run doctor with sudo to verify Caddy service-account access to its configuration",
+		})
+		return
+	}
+	if _, err := runner.LookPath("runuser"); err != nil {
+		addToReport(report, Check{
+			Name:    "caddy-service-config",
+			Status:  CheckWarning,
+			Message: "runuser is unavailable; could not verify Caddy service-account access",
+		})
+		return
+	}
+	_, err := runner.Run(ctx, "runuser", "-u", "caddy", "--", "caddy", "validate", "--config", paths.CaddyFile, "--adapter", "caddyfile")
+	if err != nil {
+		addToReport(report, Check{
+			Name:    "caddy-service-config",
+			Status:  CheckCritical,
+			Message: "Caddy service account cannot validate its configuration; check /etc/caddy directory traversal, Caddyfile/snippet readability, and Omurga imports: " + err.Error(),
+		})
+		return
+	}
+	addToReport(report, Check{
+		Name:    "caddy-service-config",
+		Status:  CheckPass,
+		Message: "Caddy service account can read and validate the configured routes",
+	})
 }
 
 func checkUnhealthyContainers(ctx context.Context, runner Runner, report *DoctorReport) {
