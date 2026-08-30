@@ -19,3 +19,4 @@
 - Release artifacts are built for Linux `amd64` and `arm64` as standalone binaries and Debian packages.
 - Project gateway routes use generated Caddy snippets with validated reloads.
 - Backup workflows support scheduled snapshots, retention, database dumps, and off-host repositories.
+
