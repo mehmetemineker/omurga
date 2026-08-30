@@ -21,8 +21,9 @@ repeatable operations.
 - Restic is the backup engine; PostgreSQL uses `pg_dump` and Redis uses snapshots.
 - The first remote backup targets are S3-compatible storage and SFTP.
 - The first alert channels are Telegram and SMTP email.
-- Host monitoring checks disk capacity, failed services, and Caddy certificate
-  expiry through a persistent systemd timer.
+- Host monitoring checks CPU load, memory, disk capacity, failed services,
+  managed container health, and Caddy certificate expiry through a persistent
+  systemd timer.
 - Remote hosts are managed over SSH without a continuously running Omurga daemon.
 
 ## Host directories

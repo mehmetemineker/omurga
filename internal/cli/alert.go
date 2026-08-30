@@ -52,6 +52,8 @@ func newAlertCheckCommand(opts *options) *cobra.Command {
 			}
 		}
 		checks := host.RunMonitor(cmd.Context(), paths, host.ExecRunner{}, host.MonitorOptions{
+			CPUWarningPercent: config.Monitor.CPUWarningPercent, CPUCriticalPercent: config.Monitor.CPUCriticalPercent,
+			MemoryWarningPercent: config.Monitor.MemoryWarningPercent, MemoryCriticalPercent: config.Monitor.MemoryCriticalPercent,
 			DiskWarningPercent: config.Monitor.DiskWarningPercent, DiskCriticalPercent: config.Monitor.DiskCriticalPercent,
 			CertificateWarningDays: config.Monitor.CertificateWarningDays, Services: config.Monitor.Services,
 			CertificateRoots: config.Monitor.CertificateRoots,

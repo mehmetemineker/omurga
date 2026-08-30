@@ -12,6 +12,8 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -156,6 +158,40 @@ func TestMonitorReportsExpiringCertificate(t *testing.T) {
 	check := monitorCertificates([]string{root}, 30)
 	if check.Status != CheckWarning || !strings.Contains(check.Message, "example.crt") {
 		t.Fatalf("unexpected certificate monitor result: %#v", check)
+	}
+}
+
+func TestMonitorReportsCPUAndMemoryThresholds(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	if err := os.MkdirAll(proc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	load := float64(runtime.NumCPU()) * 0.85
+	if err := os.WriteFile(filepath.Join(proc, "loadavg"), []byte(strconv.FormatFloat(load, 'f', 2, 64)+" 0.00 0.00 1/100 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(proc, "meminfo"), []byte("MemTotal:       1000 kB\nMemAvailable:    100 kB\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	paths := DefaultPaths(root)
+	options := MonitorOptions{CPUWarningPercent: 80, CPUCriticalPercent: 95, MemoryWarningPercent: 80, MemoryCriticalPercent: 90}
+	cpu := monitorCPU(paths, options)
+	if cpu.Status != CheckWarning {
+		t.Fatalf("unexpected CPU monitor result: %#v", cpu)
+	}
+	memory := monitorMemory(paths, options)
+	if memory.Status != CheckCritical {
+		t.Fatalf("unexpected memory monitor result: %#v", memory)
+	}
+}
+
+func TestMonitorReportsUnhealthyManagedContainer(t *testing.T) {
+	runner := healthyRunner()
+	runner.outputs[commandKey("docker", "ps", "-a", "--filter", "label=dev.omurga.managed=true", "--format", "{{.Names}}\t{{.Status}}")] = "omurga-demo-app-1\tExited (1) 2 minutes ago"
+	check := monitorContainers(context.Background(), runner)
+	if check.Status != CheckCritical || !strings.Contains(check.Message, "omurga-demo-app-1") {
+		t.Fatalf("unexpected container monitor result: %#v", check)
 	}
 }
 

@@ -32,6 +32,10 @@ type Config struct {
 type MonitorConfig struct {
 	Enabled                bool     `yaml:"enabled,omitempty" json:"enabled"`
 	Schedule               string   `yaml:"schedule,omitempty" json:"schedule,omitempty"`
+	CPUWarningPercent      int      `yaml:"cpuWarningPercent,omitempty" json:"cpuWarningPercent,omitempty"`
+	CPUCriticalPercent     int      `yaml:"cpuCriticalPercent,omitempty" json:"cpuCriticalPercent,omitempty"`
+	MemoryWarningPercent   int      `yaml:"memoryWarningPercent,omitempty" json:"memoryWarningPercent,omitempty"`
+	MemoryCriticalPercent  int      `yaml:"memoryCriticalPercent,omitempty" json:"memoryCriticalPercent,omitempty"`
 	DiskWarningPercent     int      `yaml:"diskWarningPercent,omitempty" json:"diskWarningPercent,omitempty"`
 	DiskCriticalPercent    int      `yaml:"diskCriticalPercent,omitempty" json:"diskCriticalPercent,omitempty"`
 	CertificateWarningDays int      `yaml:"certificateWarningDays,omitempty" json:"certificateWarningDays,omitempty"`
@@ -93,6 +97,12 @@ func Validate(config Config) error {
 	if monitor.DiskWarningPercent < 1 || monitor.DiskWarningPercent > 99 || monitor.DiskCriticalPercent < 1 || monitor.DiskCriticalPercent > 100 || monitor.DiskWarningPercent >= monitor.DiskCriticalPercent {
 		return fmt.Errorf("monitor disk thresholds must be between 1 and 100, with warning below critical")
 	}
+	if err := validateMonitorThresholds("CPU", monitor.CPUWarningPercent, monitor.CPUCriticalPercent); err != nil {
+		return err
+	}
+	if err := validateMonitorThresholds("memory", monitor.MemoryWarningPercent, monitor.MemoryCriticalPercent); err != nil {
+		return err
+	}
 	if monitor.CertificateWarningDays < 1 {
 		return fmt.Errorf("monitor certificateWarningDays must be at least 1")
 	}
@@ -109,10 +119,29 @@ func withMonitorDefaults(config MonitorConfig) MonitorConfig {
 	if config.DiskCriticalPercent == 0 {
 		config.DiskCriticalPercent = 90
 	}
+	if config.CPUWarningPercent == 0 {
+		config.CPUWarningPercent = 80
+	}
+	if config.CPUCriticalPercent == 0 {
+		config.CPUCriticalPercent = 95
+	}
+	if config.MemoryWarningPercent == 0 {
+		config.MemoryWarningPercent = 80
+	}
+	if config.MemoryCriticalPercent == 0 {
+		config.MemoryCriticalPercent = 90
+	}
 	if config.CertificateWarningDays == 0 {
 		config.CertificateWarningDays = 30
 	}
 	return config
+}
+
+func validateMonitorThresholds(name string, warning, critical int) error {
+	if warning < 1 || warning > 99 || critical < 1 || critical > 100 || warning >= critical {
+		return fmt.Errorf("monitor %s thresholds must be between 1 and 100, with warning below critical", name)
+	}
+	return nil
 }
 
 type MonitorIssue struct {

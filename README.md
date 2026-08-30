@@ -227,9 +227,10 @@ sudo omurga alert check
 sudo omurga alert schedule
 ```
 
-Configure thresholds and monitored services in the `monitor` section of
-`/etc/omurga/alerts.yaml`. Repeated unchanged issues are suppressed and a
-recovery notification is sent when the issue is resolved.
+Configure CPU, memory, disk, certificate, and monitored-service thresholds in
+the `monitor` section of `/etc/omurga/alerts.yaml`. Managed container health is
+also checked. Repeated unchanged issues are suppressed and a recovery
+notification is sent when the issue is resolved.
 
 ## Documentation
 

@@ -63,6 +63,10 @@ smtp:
 monitor:
   enabled: true
   schedule: "*-*-* *:00/15:00"
+  cpuWarningPercent: 80
+  cpuCriticalPercent: 95
+  memoryWarningPercent: 80
+  memoryCriticalPercent: 90
   diskWarningPercent: 80
   diskCriticalPercent: 90
   certificateWarningDays: 30
@@ -78,12 +82,14 @@ best-effort notifications for deployment and backup failures.
 
 ## Host monitoring alerts
 
-`alert check` checks root filesystem capacity, failed systemd units, configured
-service activity, and Caddy certificates under
+`alert check` checks normalized one-minute CPU load, memory usage, root
+filesystem capacity, failed systemd units, configured service activity,
+managed container health, and Caddy certificates under
 `/var/lib/caddy/.local/share/caddy`. Disk usage is a warning at 80% and
-critical at 90% by default. Certificates expiring within 30 days produce a
-warning; expired or unreadable certificates produce a critical alert. These
-values can be changed under `monitor`.
+critical at 90% by default. CPU load is a warning at 80% and critical at 95%;
+memory usage is a warning at 80% and critical at 90%. Certificates expiring
+within 30 days produce a warning; expired or unreadable certificates produce a
+critical alert. These values can be changed under `monitor`.
 
 The command sends only new or changed issues and sends a recovery notification
 when an issue disappears. Monitor state is stored in
