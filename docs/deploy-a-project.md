@@ -19,29 +19,22 @@ The commands assume:
 
 ## 1. Install Omurga
 
-Choose the release version and repository, then download the package matching
-the host architecture:
+Download the fixed v0.1.1 release package matching the host architecture:
 
 ```bash
-VERSION=0.1.0
-REPO="mehmetemineker/omurga"
-
 dpkg --print-architecture
 
 # Use arm64 for a 64-bit Raspberry Pi or another ARM64 host.
 curl -fL -o /tmp/omurga.deb \
-  "https://github.com/${REPO}/releases/download/v${VERSION}/omurga_${VERSION}_arm64.deb"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_arm64.deb"
 
 # On Intel or AMD, use this package instead:
 # curl -fL -o /tmp/omurga.deb \
-#   "https://github.com/${REPO}/releases/download/v${VERSION}/omurga_${VERSION}_amd64.deb"
+#   "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_amd64.deb"
 
 sudo apt install /tmp/omurga.deb
 omurga version
 ```
-
-Use the exact version and asset name shown on the [GitHub Releases
-page](https://github.com/mehmetemineker/omurga/releases).
 
 ## 2. Prepare the Linux host
 

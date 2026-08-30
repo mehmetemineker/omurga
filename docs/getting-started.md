@@ -32,26 +32,33 @@ Download the asset matching the host architecture from the repository’s
 [Releases](https://github.com/mehmetemineker/omurga/releases) page.
 
 ```bash
-VERSION=0.1.0
-
 # Raspberry Pi and other 64-bit ARM hosts
 curl -fL -o /tmp/omurga.deb \
-  "https://github.com/mehmetemineker/omurga/releases/download/v${VERSION}/omurga_${VERSION}_arm64.deb"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_arm64.deb"
 
 # Intel or AMD hosts use this filename instead:
 # curl -fL -o /tmp/omurga.deb \
-#   "https://github.com/mehmetemineker/omurga/releases/download/v${VERSION}/omurga_${VERSION}_amd64.deb"
+#   "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_amd64.deb"
 
 sudo apt install /tmp/omurga.deb
 omurga version
 ```
 
-The release also contains standalone binaries and `SHA256SUMS` for users who
-do not want to install a Debian package:
+The release also contains standalone binaries for users who do not want to
+install a Debian package. The following command is for `arm64` hosts:
 
 ```bash
-sha256sum -c SHA256SUMS --ignore-missing
-sudo install -m 0755 omurga-linux-arm64 /usr/local/bin/omurga
+curl -fL -o /tmp/omurga \
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga-linux-arm64"
+sudo install -m 0755 /tmp/omurga /usr/local/bin/omurga
+```
+
+For an `amd64` host, download this binary instead:
+
+```bash
+curl -fL -o /tmp/omurga \
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga-linux-amd64"
+sudo install -m 0755 /tmp/omurga /usr/local/bin/omurga
 ```
 
 ## Initialize the host

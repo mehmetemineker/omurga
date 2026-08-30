@@ -62,14 +62,11 @@ dpkg --print-architecture
 ```
 
 For a Raspberry Pi or another `arm64` host, download the `arm64` package. For
-an Intel or AMD host, download the `amd64` package. Replace `<owner>/<repo>`
-and the version in the following example:
+ an Intel or AMD host, download the `amd64` package:
 
 ```bash
-VERSION=0.1.0
-REPO="your-account/omurga"
 curl -fL -o /tmp/omurga.deb \
-  "https://github.com/${REPO}/releases/download/v${VERSION}/omurga_${VERSION}_arm64.deb"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_arm64.deb"
 sudo apt install /tmp/omurga.deb
 ```
 
@@ -77,8 +74,16 @@ For an `amd64` host, use this package name instead:
 
 ```bash
 curl -fL -o /tmp/omurga.deb \
-  "https://github.com/${REPO}/releases/download/v${VERSION}/omurga_${VERSION}_amd64.deb"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_amd64.deb"
 sudo apt install /tmp/omurga.deb
+```
+
+If you prefer the standalone binary on an `arm64` host:
+
+```bash
+curl -fL -o /tmp/omurga \
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga-linux-arm64"
+sudo install -m 0755 /tmp/omurga /usr/local/bin/omurga
 ```
 
 Verify the installation:

@@ -7,26 +7,26 @@ for the tested Raspberry Pi Debian installation.
 Build both packages on a Debian-based system:
 
 ```bash
-bash packaging/deb/build.sh 0.1.0
+bash packaging/deb/build.sh 0.1.1
 ```
 
 Build from PowerShell with Docker:
 
 ```powershell
-docker run --rm -v "${PWD}:/src" -w /src golang:1.23-bookworm bash packaging/deb/build.sh 0.1.0
+docker run --rm -v "${PWD}:/src" -w /src golang:1.23-bookworm bash packaging/deb/build.sh 0.1.1
 ```
 
 The output files are written to `dist/`:
 
 ```text
-dist/omurga_0.1.0_amd64.deb
-dist/omurga_0.1.0_arm64.deb
+dist/omurga_0.1.1_amd64.deb
+dist/omurga_0.1.1_arm64.deb
 ```
 
 Install a local package:
 
 ```bash
-sudo apt install ./omurga_0.1.0_arm64.deb
+sudo apt install ./omurga_0.1.1_arm64.deb
 ```
 
 The package installs only `/usr/bin/omurga` and documentation. It does not
