@@ -23,6 +23,20 @@ type lifecycleRunner struct {
 	streamOutput string
 }
 
+type dynamicLifecycleRunner struct {
+	*lifecycleRunner
+}
+
+func (r *dynamicLifecycleRunner) SupportsDynamicPorts() bool { return true }
+
+func (r *dynamicLifecycleRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
+	if name == "docker" && containsArgument(args, "port") {
+		r.calls = append(r.calls, strings.Join(append([]string{name}, args...), " "))
+		return "127.0.0.1:32768", nil
+	}
+	return r.lifecycleRunner.Run(ctx, name, args...)
+}
+
 func (r *lifecycleRunner) Run(_ context.Context, name string, args ...string) (string, error) {
 	call := strings.Join(append([]string{name}, args...), " ")
 	r.calls = append(r.calls, call)
@@ -236,6 +250,72 @@ func TestDeployRestoresArtifactsWhenCaddyValidationFails(t *testing.T) {
 	if got := readTestFile(t, paths.CaddyFile); got != string(oldBase) {
 		t.Fatalf("base Caddyfile was not restored:\n%s", got)
 	}
+}
+
+func TestStatelessRedeployUsesBlueGreenSlots(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	paths := host.DefaultPaths(root)
+	loaded := lifecycleProject(false)
+	service := serviceWithImage(loaded.Project.Services["app"], "example/app:2")
+	service.Volumes = nil
+	loaded.Project.Services["app"] = service
+	writeTestFile(t, paths.CaddyFile, []byte(":80 { respond \"ok\" }\n"), 0o644)
+	runner := &dynamicLifecycleRunner{lifecycleRunner: &lifecycleRunner{}}
+	lifecycle := NewLifecycle(paths, runner)
+
+	if _, err := lifecycle.Deploy(ctx, loaded, false); err != nil {
+		t.Fatalf("initial Deploy() error = %v", err)
+	}
+	result, err := lifecycle.Deploy(ctx, loaded, false)
+	if err != nil {
+		t.Fatalf("blue-green Deploy() error = %v", err)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(result.Layout.Compose), "/slots/a/compose.yaml") {
+		t.Fatalf("active Compose path = %q, want slot a", result.Layout.Compose)
+	}
+	if result.Ports["app:3000"] != 32768 {
+		t.Fatalf("active gateway port = %#v, want dynamically resolved port", result.Ports)
+	}
+	assertCallContains(t, runner.calls, "docker compose --project-name omurga-demo-production-slot-a")
+	assertCallContains(t, runner.calls, "docker compose --project-name omurga-demo-production-slot-a --file")
+	assertCallContains(t, runner.calls, " port app 3000")
+	assertCallContains(t, runner.calls, "docker compose --project-name omurga-demo-production --file")
+	if !strings.Contains(runner.calls[len(runner.calls)-1], " down --remove-orphans") {
+		t.Fatalf("previous project was not stopped last: %#v", runner.calls)
+	}
+}
+
+func TestBlueGreenHealthFailureKeepsCurrentDeployment(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	paths := host.DefaultPaths(root)
+	loaded := lifecycleProject(false)
+	service := loaded.Project.Services["app"]
+	service.Volumes = nil
+	loaded.Project.Services["app"] = service
+	writeTestFile(t, paths.CaddyFile, []byte(":80 { respond \"ok\" }\n"), 0o644)
+	runner := &dynamicLifecycleRunner{lifecycleRunner: &lifecycleRunner{}}
+	lifecycle := NewLifecycle(paths, runner)
+	if _, err := lifecycle.Deploy(ctx, loaded, false); err != nil {
+		t.Fatalf("initial Deploy() error = %v", err)
+	}
+	layout := lifecycle.Layout(loaded.Project.Name, loaded.Environment)
+	beforeCompose := readTestFile(t, layout.Compose)
+	beforeCaddy := readTestFile(t, layout.Caddy)
+	runner.failUp = 1
+	_, err := lifecycle.Deploy(ctx, loaded, false)
+	if err == nil || !strings.Contains(err.Error(), "automatic rollback kept the current deployment active") {
+		t.Fatalf("expected automatic rollback error, got: %v", err)
+	}
+	if got := readTestFile(t, layout.Compose); got != beforeCompose {
+		t.Fatalf("current Compose artifact changed after failed replacement:\n%s", got)
+	}
+	if got := readTestFile(t, layout.Caddy); got != beforeCaddy {
+		t.Fatalf("current Caddy artifact changed after failed replacement:\n%s", got)
+	}
+	assertCallContains(t, runner.calls, "docker compose --project-name omurga-demo-production-slot-a --file")
+	assertCallContains(t, runner.calls, "down --remove-orphans")
 }
 
 func TestDeployWithoutGatewayDoesNotRequireOrRunCaddy(t *testing.T) {

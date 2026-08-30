@@ -82,9 +82,26 @@ func (l Lifecycle) Logs(ctx context.Context, loaded manifest.LoadedProject, opti
 	if dryRun {
 		return result, nil
 	}
-	if _, err := l.deployment(ctx, loaded.Project.Name, environment, true); err != nil {
+	deployment, err := l.deployment(ctx, loaded.Project.Name, environment, true)
+	if err != nil {
 		return LogResult{}, err
 	}
+	activeLayout := activeComposeLayout(layout, deployment)
+	args = composeArgsWithProjectName(activeLayout, activeComposeProjectName(activeLayout, loaded.Project.Name, environment), "logs")
+	if options.Follow {
+		args = append(args, "--follow")
+	}
+	if options.Tail != "" {
+		args = append(args, "--tail", options.Tail)
+	}
+	if options.Since != "" {
+		args = append(args, "--since", options.Since)
+	}
+	if options.Timestamps {
+		args = append(args, "--timestamps")
+	}
+	args = append(args, options.Services...)
+	result.Command = append([]string{"docker"}, args...)
 	streamer, ok := l.Runner.(host.StreamRunner)
 	if !ok {
 		return LogResult{}, fmt.Errorf("project log streaming is not supported by the command runner")
@@ -102,9 +119,23 @@ func (l Lifecycle) Rollback(ctx context.Context, loaded manifest.LoadedProject, 
 	if err != nil {
 		return RollbackResult{}, err
 	}
-	currentCompose, err := captureFile(layout.Compose)
+	activeLayout := activeComposeLayout(layout, deployment)
+	activeProject := activeComposeProjectName(activeLayout, loaded.Project.Name, environment)
+	if activeSlot := deploymentSlot(activeLayout); activeSlot != "" {
+		previousSlot := "a"
+		if activeSlot == "a" {
+			previousSlot = "b"
+		}
+		previousLayout := slotLayout(layout, previousSlot)
+		if previousExists, existsErr := fileExistsAt(previousLayout.Compose); existsErr != nil {
+			return RollbackResult{}, existsErr
+		} else if previousExists {
+			return l.rollbackBlueGreen(ctx, loaded, layout, activeLayout, previousLayout, activeProject, deployment, dryRun)
+		}
+	}
+	currentCompose, err := captureFile(activeLayout.Compose)
 	if err != nil || !currentCompose.Exists {
-		return RollbackResult{}, fmt.Errorf("current Compose artifact is not available at %s", layout.Compose)
+		return RollbackResult{}, fmt.Errorf("current Compose artifact is not available at %s", activeLayout.Compose)
 	}
 	previousCompose, err := captureFile(layout.PreviousCompose)
 	if err != nil {
@@ -137,23 +168,23 @@ func (l Lifecycle) Rollback(ctx context.Context, loaded manifest.LoadedProject, 
 	if err := persistPrevious(layout.PreviousCompose, currentCompose); err != nil {
 		return RollbackResult{}, fmt.Errorf("could not preserve current Compose artifact before rollback: %w", err)
 	}
-	if err := restoreFile(layout.Compose, previousCompose); err != nil {
+	if err := restoreFile(activeLayout.Compose, previousCompose); err != nil {
 		_ = restoreFile(layout.PreviousCompose, previousCompose)
 		return RollbackResult{}, fmt.Errorf("could not activate previous Compose artifact: %w", err)
 	}
-	if _, err := l.runStep(ctx, "Validate previous Compose configuration", "docker", composeArgs(layout, loaded.Project.Name, environment, "config", "--quiet")...); err != nil {
-		restoreErr := errors.Join(restoreFile(layout.Compose, currentCompose), restoreFile(layout.PreviousCompose, previousCompose))
+	if _, err := l.runStep(ctx, "Validate previous Compose configuration", "docker", composeArgsWithProjectName(activeLayout, activeProject, "config", "--quiet")...); err != nil {
+		restoreErr := errors.Join(restoreFile(activeLayout.Compose, currentCompose), restoreFile(layout.PreviousCompose, previousCompose))
 		return RollbackResult{}, errors.Join(fmt.Errorf("previous Compose configuration is invalid: %w", err), restoreErr)
 	}
-	if _, err := l.runStep(ctx, "Start and health-check previous containers", "docker", composeArgs(layout, loaded.Project.Name, environment,
+	if _, err := l.runStep(ctx, "Start and health-check previous containers", "docker", composeArgsWithProjectName(activeLayout, activeProject,
 		"up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...); err != nil {
-		restoreErr := errors.Join(l.restoreRollbackCompose(ctx, layout, loaded.Project.Name, environment, currentCompose), restoreFile(layout.PreviousCompose, previousCompose))
+		restoreErr := errors.Join(l.restoreRollbackCompose(ctx, activeLayout, activeProject, currentCompose), restoreFile(layout.PreviousCompose, previousCompose))
 		return RollbackResult{}, errors.Join(fmt.Errorf("previous project containers did not become healthy: %w", err), restoreErr)
 	}
 	if needsCaddy {
 		if err := l.applyCaddy(ctx, layout, previousCaddy.Data); err != nil {
 			restoreErr := errors.Join(
-				l.restoreRollbackCompose(ctx, layout, loaded.Project.Name, environment, currentCompose),
+				l.restoreRollbackCompose(ctx, activeLayout, activeProject, currentCompose),
 				restoreFile(layout.PreviousCompose, previousCompose),
 				restoreFile(layout.PreviousCaddy, previousCaddy),
 			)
@@ -162,7 +193,7 @@ func (l Lifecycle) Rollback(ctx context.Context, loaded manifest.LoadedProject, 
 	}
 	deployment.Status = "running"
 	deployment.Revision = targetRevision
-	deployment.ComposePath = layout.Compose
+	deployment.ComposePath = activeLayout.Compose
 	deployment.CaddyPath = caddyStatePath(layout, previousCaddy.Exists)
 	deployment.LastError = ""
 	store, err := state.Open(ctx, l.Paths.StateDB)
@@ -172,6 +203,80 @@ func (l Lifecycle) Rollback(ctx context.Context, loaded manifest.LoadedProject, 
 	defer store.Close()
 	if err := store.PutDeployment(ctx, deployment); err != nil {
 		return RollbackResult{}, fmt.Errorf("rollback completed but deployment state could not be stored: %w", err)
+	}
+	for index := range result.Steps {
+		result.Steps[index].Status = "completed"
+	}
+	return result, nil
+}
+
+func (l Lifecycle) rollbackBlueGreen(ctx context.Context, loaded manifest.LoadedProject, layout, activeLayout, previousLayout DeploymentLayout, activeProject string, deployment state.Deployment, dryRun bool) (RollbackResult, error) {
+	previousProject := activeComposeProjectName(previousLayout, loaded.Project.Name, loaded.Environment)
+	currentCompose, err := captureFile(activeLayout.Compose)
+	if err != nil || !currentCompose.Exists {
+		return RollbackResult{}, fmt.Errorf("current Compose artifact is not available at %s", activeLayout.Compose)
+	}
+	previousCompose, err := captureFile(previousLayout.Compose)
+	if err != nil || !previousCompose.Exists {
+		return RollbackResult{}, fmt.Errorf("previous slot Compose artifact is not available at %s", previousLayout.Compose)
+	}
+	currentCaddy, err := captureFile(layout.Caddy)
+	if err != nil {
+		return RollbackResult{}, fmt.Errorf("could not read current Caddy artifact: %w", err)
+	}
+	previousCaddy, err := captureFile(layout.PreviousCaddy)
+	if err != nil {
+		return RollbackResult{}, fmt.Errorf("could not read previous Caddy artifact: %w", err)
+	}
+	if !previousCaddy.Exists {
+		return RollbackResult{}, fmt.Errorf("previous Caddy artifact is not available for blue-green rollback")
+	}
+	targetRevision := artifactRevision(Artifacts{Compose: previousCompose.Data, Caddy: previousCaddy.Data})
+	result := RollbackResult{
+		Project: loaded.Project.Name, Environment: gateway.EnvironmentKey(loaded.Environment),
+		FromRevision: deployment.Revision, ToRevision: targetRevision, DryRun: dryRun,
+		Steps: rollbackPlan(previousLayout, loaded.Project.Name, loaded.Environment, true, l.serviceManager().ReloadCommand("caddy")),
+	}
+	if dryRun {
+		return result, nil
+	}
+	if err := l.checkPrerequisites(true); err != nil {
+		return RollbackResult{}, err
+	}
+	if _, err := l.runStep(ctx, "Validate previous slot Compose configuration", "docker", composeArgsWithProjectName(previousLayout, previousProject, "config", "--quiet")...); err != nil {
+		return RollbackResult{}, fmt.Errorf("previous slot Compose configuration is invalid: %w", err)
+	}
+	if _, err := l.runStep(ctx, "Start and health-check previous slot containers", "docker", composeArgsWithProjectName(previousLayout, previousProject,
+		"up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...); err != nil {
+		_, _ = l.runStep(ctx, "Remove failed rollback slot containers", "docker", composeArgsWithProjectName(previousLayout, previousProject, "down", "--remove-orphans")...)
+		return RollbackResult{}, fmt.Errorf("previous slot containers did not become healthy: %w", err)
+	}
+	if err := l.applyCaddy(ctx, layout, previousCaddy.Data); err != nil {
+		_, _ = l.runStep(ctx, "Remove failed rollback slot containers", "docker", composeArgsWithProjectName(previousLayout, previousProject, "down", "--remove-orphans")...)
+		return RollbackResult{}, err
+	}
+	deployment.Status = "running"
+	deployment.Revision = targetRevision
+	deployment.ComposePath = previousLayout.Compose
+	deployment.CaddyPath = caddyStatePath(layout, true)
+	deployment.LastError = ""
+	store, err := state.Open(ctx, l.Paths.StateDB)
+	if err != nil {
+		restoreErr := l.restoreCaddyAfterFailedSwitch(ctx, layout, currentCaddy)
+		_, cleanupErr := l.runStep(ctx, "Remove failed rollback slot containers", "docker", composeArgsWithProjectName(previousLayout, previousProject, "down", "--remove-orphans")...)
+		return RollbackResult{}, errors.Join(fmt.Errorf("rollback completed but state database could not be opened: %w", err), restoreErr, cleanupErr)
+	}
+	if err := store.PutDeployment(ctx, deployment); err != nil {
+		_ = store.Close()
+		restoreErr := l.restoreCaddyAfterFailedSwitch(ctx, layout, currentCaddy)
+		_, cleanupErr := l.runStep(ctx, "Remove failed rollback slot containers", "docker", composeArgsWithProjectName(previousLayout, previousProject, "down", "--remove-orphans")...)
+		return RollbackResult{}, errors.Join(fmt.Errorf("rollback completed but deployment state could not be stored: %w", err), restoreErr, cleanupErr)
+	}
+	if err := store.Close(); err != nil {
+		return RollbackResult{}, fmt.Errorf("rollback completed but state database could not be closed: %w", err)
+	}
+	if _, err := l.runStep(ctx, "Stop current project containers", "docker", composeArgsWithProjectName(activeLayout, activeProject, "down", "--remove-orphans")...); err != nil {
+		return result, fmt.Errorf("rollback succeeded, but current containers could not be removed: %w", err)
 	}
 	for index := range result.Steps {
 		result.Steps[index].Status = "completed"
@@ -210,6 +315,18 @@ func (l Lifecycle) Delete(ctx context.Context, loaded manifest.LoadedProject, op
 	if deployment.Project == "" && !composeExists && !caddyExists && !(options.PurgeData && dataExists) {
 		return DeleteResult{}, fmt.Errorf("project %s/%s is not deployed", loaded.Project.Name, environment)
 	}
+	activeLayout := activeComposeLayout(layout, deployment)
+	if deployment.Project != "" {
+		composeExists, err = fileExistsAt(activeLayout.Compose)
+		if err != nil {
+			return DeleteResult{}, err
+		}
+		caddyExists, err = fileExistsAt(activeLayout.Caddy)
+		if err != nil {
+			return DeleteResult{}, err
+		}
+		result.Steps = deletePlan(activeLayout, loaded.Project.Name, environment, composeExists, caddyExists, options.PurgeData)
+	}
 	if composeExists {
 		if _, err := l.Runner.LookPath("docker"); err != nil {
 			return DeleteResult{}, fmt.Errorf("Docker is required for project deletion")
@@ -221,7 +338,7 @@ func (l Lifecycle) Delete(ctx context.Context, loaded manifest.LoadedProject, op
 		}
 	}
 	if composeExists {
-		if _, err := l.runStep(ctx, "Remove project containers", "docker", composeArgs(layout, loaded.Project.Name, environment, "down", "--remove-orphans")...); err != nil {
+		if _, err := l.runStep(ctx, "Remove project containers", "docker", composeArgsWithProjectName(activeLayout, activeComposeProjectName(activeLayout, loaded.Project.Name, environment), "down", "--remove-orphans")...); err != nil {
 			return DeleteResult{}, fmt.Errorf("could not remove project containers: %w", err)
 		}
 	}
@@ -242,6 +359,9 @@ func (l Lifecycle) Delete(ctx context.Context, loaded manifest.LoadedProject, op
 		if err := safeRemoveAll(layout.Root, dataPath); err != nil {
 			return DeleteResult{}, fmt.Errorf("could not purge project data: %w", err)
 		}
+	}
+	if err := safeRemoveAll(layout.Root, filepath.Join(layout.Root, "slots")); err != nil {
+		return DeleteResult{}, fmt.Errorf("could not remove deployment slots: %w", err)
 	}
 	if _, err := os.Stat(l.Paths.StateDB); err == nil {
 		store, err := state.Open(ctx, l.Paths.StateDB)
@@ -291,11 +411,11 @@ func (l Lifecycle) deployment(ctx context.Context, project, environment string, 
 	return deployment, nil
 }
 
-func (l Lifecycle) restoreRollbackCompose(ctx context.Context, layout DeploymentLayout, project, environment string, current fileSnapshot) error {
+func (l Lifecycle) restoreRollbackCompose(ctx context.Context, layout DeploymentLayout, composeProject string, current fileSnapshot) error {
 	if err := restoreFile(layout.Compose, current); err != nil {
 		return err
 	}
-	if _, err := l.runStep(ctx, "Restore current project containers", "docker", composeArgs(layout, project, environment,
+	if _, err := l.runStep(ctx, "Restore current project containers", "docker", composeArgsWithProjectName(layout, composeProject,
 		"up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...); err != nil {
 		return fmt.Errorf("could not restore current project containers: %w", err)
 	}
@@ -321,10 +441,11 @@ func validateLogOptions(project manifest.Project, options LogOptions) error {
 }
 
 func rollbackPlan(layout DeploymentLayout, project, environment string, needsCaddy bool, reload host.PackageCommand) []LifecycleStep {
+	composeProject := activeComposeProjectName(layout, project, environment)
 	steps := []LifecycleStep{
 		{Name: "activate previous Compose artifact", Path: layout.PreviousCompose, Status: "planned"},
-		{Name: "validate previous Compose configuration", Command: append([]string{"docker"}, composeArgs(layout, project, environment, "config", "--quiet")...), Status: "planned"},
-		{Name: "start and health-check previous containers", Command: append([]string{"docker"}, composeArgs(layout, project, environment, "up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...), Status: "planned"},
+		{Name: "validate previous Compose configuration", Command: append([]string{"docker"}, composeArgsWithProjectName(layout, composeProject, "config", "--quiet")...), Status: "planned"},
+		{Name: "start and health-check previous containers", Command: append([]string{"docker"}, composeArgsWithProjectName(layout, composeProject, "up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...), Status: "planned"},
 	}
 	if needsCaddy {
 		steps = append(steps,
@@ -339,8 +460,9 @@ func rollbackPlan(layout DeploymentLayout, project, environment string, needsCad
 func deletePlan(layout DeploymentLayout, project, environment string, hasCompose, hasCaddy, purgeData bool) []LifecycleStep {
 	steps := make([]LifecycleStep, 0)
 	if hasCompose {
+		composeProject := activeComposeProjectName(layout, project, environment)
 		steps = append(steps, LifecycleStep{
-			Name: "remove project containers", Command: append([]string{"docker"}, composeArgs(layout, project, environment, "down", "--remove-orphans")...), Status: "planned",
+			Name: "remove project containers", Command: append([]string{"docker"}, composeArgsWithProjectName(layout, composeProject, "down", "--remove-orphans")...), Status: "planned",
 		})
 	}
 	if hasCaddy {

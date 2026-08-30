@@ -62,8 +62,12 @@ this localhost port, and project containers are not exposed directly to the
 internet.
 
 A deployment validates the Compose and Caddy configurations, pulls images,
-checks container health, and atomically reloads Caddy. The existing gateway
-route is preserved when a health check fails.
+checks container health, and atomically reloads Caddy. Stateless gateway
+projects are deployed blue-green into alternating Compose slots with ephemeral
+loopback ports; the old slot is stopped only after the new route is active.
+Projects with persistent volumes or dependencies use the in-place path. The
+existing gateway route is preserved when a health check fails, and failed
+blue-green replacements are removed automatically.
 
 ## Secret model
 

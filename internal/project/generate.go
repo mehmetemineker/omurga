@@ -21,6 +21,7 @@ const (
 type RenderOptions struct {
 	Environment        string
 	DeploymentRoot     string
+	DataRoot           string
 	RuntimeSecretsRoot string
 	Ports              map[string]int
 }
@@ -86,6 +87,9 @@ func Generate(project manifest.Project, options RenderOptions) (Artifacts, error
 	if options.DeploymentRoot == "" || options.RuntimeSecretsRoot == "" {
 		return Artifacts{}, fmt.Errorf("deployment and runtime secret roots are required")
 	}
+	if options.DataRoot == "" {
+		options.DataRoot = options.DeploymentRoot
+	}
 	if options.Ports == nil {
 		options.Ports = PreviewPorts(project, options.Environment)
 	}
@@ -137,7 +141,7 @@ func Generate(project manifest.Project, options RenderOptions) (Artifacts, error
 		for _, volume := range service.Volumes {
 			generated.Volumes = append(generated.Volumes, ComposeVolume{
 				Type:   "bind",
-				Source: path.Join(options.DeploymentRoot, "data", volume.Name),
+				Source: path.Join(options.DataRoot, "data", volume.Name),
 				Target: volume.Target,
 			})
 		}
@@ -204,7 +208,7 @@ func Generate(project manifest.Project, options RenderOptions) (Artifacts, error
 
 func renderDependency(name string, dependency manifest.Dependency, options RenderOptions) (ComposeService, map[string]ComposeSecret, error) {
 	secrets := make(map[string]ComposeSecret)
-	dataRoot := path.Join(options.DeploymentRoot, "data", "dependencies", name)
+	dataRoot := path.Join(options.DataRoot, "data", "dependencies", name)
 	labels := map[string]string{
 		"dev.omurga.managed":     "true",
 		"dev.omurga.environment": EnvironmentKey(options.Environment),

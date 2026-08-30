@@ -30,6 +30,11 @@ type EnvironmentIORunner interface {
 	RunEnvironmentIO(ctx context.Context, environment map[string]string, stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error
 }
 
+type DynamicPortRunner interface {
+	Runner
+	SupportsDynamicPorts() bool
+}
+
 type ExecRunner struct{}
 
 func (ExecRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
@@ -77,6 +82,8 @@ func mergedEnvironment(base []string, overrides map[string]string) []string {
 func (ExecRunner) LookPath(name string) (string, error) {
 	return exec.LookPath(name)
 }
+
+func (ExecRunner) SupportsDynamicPorts() bool { return true }
 
 func (ExecRunner) Stream(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {
 	return ExecRunner{}.RunIO(ctx, nil, stdout, stderr, name, args...)

@@ -108,7 +108,11 @@ sudo omurga project delete ./demo --env production
 
 Deploy waits for container health, validates generated Compose and Caddy
 configuration, and preserves the previous healthy artifacts for rollback.
-Gateway ports bind only to `127.0.0.1`; Caddy is the public entry point.
+Stateless projects with a gateway use blue-green deployment with an inactive
+Compose slot and ephemeral loopback ports; Caddy switches to the healthy slot
+before the old slot is stopped. Stateful projects or projects with persistent
+bind mounts use the safe in-place path with automatic rollback. Gateway ports
+bind only to `127.0.0.1`; Caddy is the public entry point.
 Persistent data is preserved during deletion unless both `--purge-data` and
 `--yes` are supplied.
 

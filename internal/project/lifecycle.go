@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"omurga/internal/gateway"
@@ -183,6 +185,11 @@ func (l Lifecycle) Deploy(ctx context.Context, loaded manifest.LoadedProject, dr
 	if dryRun {
 		return result, nil
 	}
+	if current, exists, err := store.GetDeployment(ctx, loaded.Project.Name, gateway.EnvironmentKey(loaded.Environment)); err != nil {
+		return DeployResult{}, fmt.Errorf("could not inspect current deployment: %w", err)
+	} else if exists && current.Status == "running" && isBlueGreenEligible(loaded.Project, l.Runner) {
+		return l.deployBlueGreen(ctx, loaded, layout, result, current, store)
+	}
 
 	if err := prepareDeploymentDirectories(layout, loaded.Project, needsCaddy); err != nil {
 		return DeployResult{}, err
@@ -254,7 +261,9 @@ func (l Lifecycle) Status(ctx context.Context, loaded manifest.LoadedProject) (S
 	}
 	result.Deployed = true
 	result.Deployment = &deployment
-	output, err := l.Runner.Run(ctx, "docker", composeArgs(l.Layout(result.Project, result.Environment), result.Project, result.Environment, "ps", "--format", "json")...)
+	composeLayout := activeComposeLayout(l.Layout(result.Project, result.Environment), deployment)
+	composeProject := activeComposeProjectName(composeLayout, result.Project, result.Environment)
+	output, err := l.Runner.Run(ctx, "docker", composeArgsWithProjectName(composeLayout, composeProject, "ps", "--format", "json")...)
 	if err != nil {
 		return StatusResult{}, fmt.Errorf("could not inspect project containers: %w", err)
 	}
@@ -290,10 +299,14 @@ func (l Lifecycle) Control(ctx context.Context, loaded manifest.LoadedProject, a
 		return ControlResult{}, err
 	}
 	defer store.Close()
-	if _, exists, err := store.GetDeployment(ctx, result.Project, environment); err != nil {
+	if deployment, exists, err := store.GetDeployment(ctx, result.Project, environment); err != nil {
 		return ControlResult{}, err
 	} else if !exists {
 		return ControlResult{}, fmt.Errorf("project %s/%s is not deployed", result.Project, environment)
+	} else {
+		activeLayout := activeComposeLayout(layout, deployment)
+		args = composeArgsWithProjectName(activeLayout, activeComposeProjectName(activeLayout, result.Project, environment), action)
+		result.Command = append([]string{"docker"}, args...)
 	}
 	if _, err := l.runStep(ctx, strings.ToUpper(action[:1])+action[1:]+" project containers", "docker", args...); err != nil {
 		return ControlResult{}, fmt.Errorf("could not %s project containers: %w", action, err)
@@ -416,6 +429,253 @@ func (l Lifecycle) rollbackCompose(ctx context.Context, layout DeploymentLayout,
 		downErr = fmt.Errorf("could not remove failed project containers: %w", downErr)
 	}
 	return errors.Join(downErr, restoreErr)
+}
+
+func isBlueGreenEligible(project manifest.Project, runner host.Runner) bool {
+	dynamic, ok := runner.(host.DynamicPortRunner)
+	if !ok || !dynamic.SupportsDynamicPorts() {
+		return false
+	}
+	if len(project.Gateway.Routes) == 0 || len(project.Dependencies) > 0 {
+		return false
+	}
+	for _, service := range project.Services {
+		if len(service.Volumes) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func slotLayout(layout DeploymentLayout, slot string) DeploymentLayout {
+	root := filepath.Join(layout.Root, "slots", slot)
+	layout.Root = root
+	layout.Compose = filepath.Join(root, "compose.yaml")
+	layout.PreviousCompose = filepath.Join(root, "compose.previous.yaml")
+	return layout
+}
+
+func activeComposeLayout(layout DeploymentLayout, deployment state.Deployment) DeploymentLayout {
+	if deployment.ComposePath == "" {
+		return layout
+	}
+	candidate := filepath.Clean(deployment.ComposePath)
+	baseRoot := filepath.Clean(layout.Root)
+	for _, slot := range []string{"a", "b"} {
+		if candidate == filepath.Join(baseRoot, "slots", slot, "compose.yaml") {
+			return slotLayout(layout, slot)
+		}
+	}
+	if candidate == filepath.Clean(layout.Compose) {
+		return layout
+	}
+	// Keep compatibility with deployments created by older versions while
+	// ensuring commands operate on the recorded active artifact.
+	layout.Compose = candidate
+	layout.PreviousCompose = candidate + ".previous"
+	return layout
+}
+
+func activeComposeProjectName(layout DeploymentLayout, projectName, environment string) string {
+	name := ComposeProjectName(projectName, environment)
+	base := filepath.Base(filepath.Clean(layout.Root))
+	if base == "a" || base == "b" {
+		return name + "-slot-" + base
+	}
+	return name
+}
+
+func deploymentSlot(layout DeploymentLayout) string {
+	base := filepath.Base(filepath.Clean(layout.Root))
+	if base == "a" || base == "b" {
+		return base
+	}
+	return ""
+}
+
+func composeArgsWithProjectName(layout DeploymentLayout, composeProject string, action ...string) []string {
+	args := []string{"compose", "--project-name", composeProject, "--file", layout.Compose}
+	return append(args, action...)
+}
+
+func clonePorts(ports map[string]int) map[string]int {
+	result := make(map[string]int, len(ports))
+	for key, port := range ports {
+		result[key] = port
+	}
+	return result
+}
+
+func parsePublishedPort(output string) (int, error) {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if _, port, err := net.SplitHostPort(line); err == nil {
+			value, parseErr := strconv.Atoi(port)
+			if parseErr == nil && value > 0 && value <= 65535 {
+				return value, nil
+			}
+		}
+		if index := strings.LastIndex(line, ":"); index >= 0 {
+			value, err := strconv.Atoi(strings.TrimSpace(line[index+1:]))
+			if err == nil && value > 0 && value <= 65535 {
+				return value, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("could not determine the published port from Docker output %q", strings.TrimSpace(output))
+}
+
+func (l Lifecycle) resolveDynamicPorts(ctx context.Context, layout DeploymentLayout, composeProject string, routes []manifest.Route) (map[string]int, error) {
+	ports := make(map[string]int)
+	for _, route := range routes {
+		key := PortKey(route.Service, route.Port)
+		if _, exists := ports[key]; exists {
+			continue
+		}
+		output, err := l.runStep(ctx, "Resolve gateway port for "+route.Service, "docker",
+			composeArgsWithProjectName(layout, composeProject, "port", route.Service, strconv.Itoa(route.Port))...)
+		if err != nil {
+			return nil, fmt.Errorf("could not resolve published port for %s:%d: %w", route.Service, route.Port, err)
+		}
+		port, err := parsePublishedPort(output)
+		if err != nil {
+			return nil, fmt.Errorf("could not resolve published port for %s:%d: %w", route.Service, route.Port, err)
+		}
+		ports[key] = port
+	}
+	return ports, nil
+}
+
+func (l Lifecycle) cleanupBlueGreenSlot(ctx context.Context, layout DeploymentLayout, composeProject string, snapshot fileSnapshot) error {
+	_, downErr := l.runStep(ctx, "Remove failed replacement containers", "docker",
+		composeArgsWithProjectName(layout, composeProject, "down", "--remove-orphans")...)
+	restoreErr := restoreFile(layout.Compose, snapshot)
+	if downErr != nil {
+		downErr = fmt.Errorf("could not remove failed replacement containers: %w", downErr)
+	}
+	return errors.Join(downErr, restoreErr)
+}
+
+func (l Lifecycle) deployBlueGreen(ctx context.Context, loaded manifest.LoadedProject, layout DeploymentLayout, result DeployResult, current state.Deployment, store *state.Store) (DeployResult, error) {
+	activeLayout := activeComposeLayout(layout, current)
+	activeProject := activeComposeProjectName(activeLayout, loaded.Project.Name, loaded.Environment)
+	targetSlot := "a"
+	if filepath.Base(filepath.Clean(activeLayout.Root)) == "a" {
+		targetSlot = "b"
+	} else if filepath.Base(filepath.Clean(activeLayout.Root)) == "b" {
+		targetSlot = "a"
+	}
+	targetLayout := slotLayout(layout, targetSlot)
+	if err := prepareDeploymentDirectories(targetLayout, loaded.Project, true); err != nil {
+		return DeployResult{}, err
+	}
+	if previous, err := captureFile(activeLayout.Compose); err != nil {
+		return DeployResult{}, fmt.Errorf("could not capture active Compose artifact: %w", err)
+	} else if err := persistPrevious(layout.PreviousCompose, previous); err != nil {
+		return DeployResult{}, fmt.Errorf("could not preserve active Compose artifact: %w", err)
+	}
+
+	dynamicPorts := clonePorts(result.Ports)
+	for key := range dynamicPorts {
+		dynamicPorts[key] = 0
+	}
+	options := DefaultRenderOptions(loaded.Project, loaded.Environment)
+	options.DeploymentRoot = filepath.ToSlash(targetLayout.Root)
+	options.DataRoot = filepath.ToSlash(layout.Root)
+	options.RuntimeSecretsRoot = filepath.ToSlash(layout.RuntimeSecrets)
+	options.Ports = dynamicPorts
+	replacement, err := Generate(loaded.Project, options)
+	if err != nil {
+		return DeployResult{}, err
+	}
+	snapshot, err := captureFile(targetLayout.Compose)
+	if err != nil {
+		return DeployResult{}, fmt.Errorf("could not capture replacement Compose artifact: %w", err)
+	}
+	if err := WriteArtifact(targetLayout.Compose, replacement.Compose, 0o640); err != nil {
+		return DeployResult{}, fmt.Errorf("could not write replacement Compose artifact: %w", err)
+	}
+	replacementProject := ComposeProjectName(loaded.Project.Name, loaded.Environment) + "-slot-" + targetSlot
+	composeArgs := func(action ...string) []string {
+		return composeArgsWithProjectName(targetLayout, replacementProject, action...)
+	}
+	if _, err := l.runStep(ctx, "Validate replacement Compose configuration", "docker", composeArgs("config", "--quiet")...); err != nil {
+		cleanupErr := l.cleanupBlueGreenSlot(ctx, targetLayout, replacementProject, snapshot)
+		return DeployResult{}, errors.Join(fmt.Errorf("replacement Compose configuration is invalid: %w", err), cleanupErr)
+	}
+	if _, err := l.runStep(ctx, "Start and health-check replacement containers", "docker", composeArgs("up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...); err != nil {
+		cleanupErr := l.cleanupBlueGreenSlot(ctx, targetLayout, replacementProject, snapshot)
+		return DeployResult{}, errors.Join(fmt.Errorf("replacement containers did not become healthy; automatic rollback kept the current deployment active: %w", err), cleanupErr)
+	}
+	actualPorts, err := l.resolveDynamicPorts(ctx, targetLayout, replacementProject, loaded.Project.Gateway.Routes)
+	if err != nil {
+		cleanupErr := l.cleanupBlueGreenSlot(ctx, targetLayout, replacementProject, snapshot)
+		return DeployResult{}, errors.Join(fmt.Errorf("replacement gateway ports could not be resolved; automatic rollback kept the current deployment active: %w", err), cleanupErr)
+	}
+	// Persist the resolved port assignments in the slot artifact. This keeps
+	// restart and explicit rollback consistent with the Caddy route that was
+	// activated for this slot.
+	options.Ports = actualPorts
+	replacement, err = Generate(loaded.Project, options)
+	if err != nil {
+		cleanupErr := l.cleanupBlueGreenSlot(ctx, targetLayout, replacementProject, snapshot)
+		return DeployResult{}, errors.Join(fmt.Errorf("could not finalize replacement Compose artifact: %w", err), cleanupErr)
+	}
+	if err := WriteArtifact(targetLayout.Compose, replacement.Compose, 0o640); err != nil {
+		cleanupErr := l.cleanupBlueGreenSlot(ctx, targetLayout, replacementProject, snapshot)
+		return DeployResult{}, errors.Join(fmt.Errorf("could not persist resolved replacement ports: %w", err), cleanupErr)
+	}
+	caddyOptions := options
+	caddyOptions.Ports = actualPorts
+	caddyContent, err := renderCaddy(loaded.Project, caddyOptions)
+	if err != nil {
+		cleanupErr := l.cleanupBlueGreenSlot(ctx, targetLayout, replacementProject, snapshot)
+		return DeployResult{}, errors.Join(err, cleanupErr)
+	}
+	oldCaddy, err := captureFile(layout.Caddy)
+	if err != nil {
+		cleanupErr := l.cleanupBlueGreenSlot(ctx, targetLayout, replacementProject, snapshot)
+		return DeployResult{}, errors.Join(fmt.Errorf("could not capture active Caddy artifact: %w", err), cleanupErr)
+	}
+	if err := l.applyCaddy(ctx, layout, caddyContent); err != nil {
+		cleanupErr := l.cleanupBlueGreenSlot(ctx, targetLayout, replacementProject, snapshot)
+		return DeployResult{}, errors.Join(fmt.Errorf("replacement gateway was not activated; automatic rollback kept the current deployment active: %w", err), cleanupErr)
+	}
+	result.Revision = artifactRevision(Artifacts{Compose: replacement.Compose, Caddy: caddyContent})
+	deployment := state.Deployment{
+		Project: loaded.Project.Name, Environment: gateway.EnvironmentKey(loaded.Environment), Status: "running",
+		Revision: result.Revision, ManifestPath: loaded.Path, ComposePath: targetLayout.Compose, CaddyPath: caddyStatePath(layout, len(caddyContent) > 0),
+	}
+	if err := store.PutDeployment(ctx, deployment); err != nil {
+		restoreErr := l.restoreCaddyAfterFailedSwitch(ctx, layout, oldCaddy)
+		cleanupErr := l.cleanupBlueGreenSlot(ctx, targetLayout, replacementProject, snapshot)
+		return DeployResult{}, errors.Join(fmt.Errorf("replacement is running but deployment state could not be stored: %w", err), restoreErr, cleanupErr)
+	}
+	if _, err := l.runStep(ctx, "Stop previous project containers", "docker", composeArgsWithProjectName(activeLayout, activeProject, "down", "--remove-orphans")...); err != nil {
+		result.Layout = targetLayout
+		result.Ports = actualPorts
+		return result, fmt.Errorf("zero-downtime deployment succeeded, but previous containers could not be removed: %w", err)
+	}
+	result.Layout = targetLayout
+	result.Ports = actualPorts
+	for index := range result.Steps {
+		result.Steps[index].Status = "completed"
+	}
+	return result, nil
+}
+
+func (l Lifecycle) restoreCaddyAfterFailedSwitch(ctx context.Context, layout DeploymentLayout, snapshot fileSnapshot) error {
+	if err := restoreFile(layout.Caddy, snapshot); err != nil {
+		return err
+	}
+	reload := l.serviceManager().ReloadCommand("caddy")
+	if _, err := l.runStep(ctx, "Restore previous Caddy route", reload.Name, reload.Args...); err != nil {
+		return fmt.Errorf("could not restore previous Caddy route: %w", err)
+	}
+	return nil
 }
 
 func composeArgs(layout DeploymentLayout, projectName, environment string, action ...string) []string {

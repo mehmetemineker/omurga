@@ -22,8 +22,22 @@ execution reuses the same reconciliation contract through SSH host profiles.
 12. Validate the complete Caddy configuration and reload the Caddy service.
 13. Store the successful deployment revision and paths in SQLite.
 
-Caddy receives only loopback upstreams allocated from `20000-29999`. Project
-containers are not published on public host interfaces.
+Caddy receives only loopback upstreams. Regular deployments reuse stable ports
+allocated from `20000-29999`; project containers are not published on public
+host interfaces.
+
+When an already-running project has only stateless services, no dependencies,
+and no bind-mounted volumes, Omurga uses a blue-green deployment path. The new
+Compose project is started in the inactive `a` or `b` slot with ephemeral
+loopback ports, health-checked, and connected to Caddy by an atomic reload.
+Only after the gateway points at the replacement does Omurga stop the old
+slot. The active slot is recorded in SQLite, so status, logs, restart, stop,
+rollback, and delete continue to target the correct containers.
+
+Projects with PostgreSQL, Redis, other dependencies, or bind-mounted volumes
+use the regular in-place deployment path. Running two versions against shared
+persistent state would be unsafe, so those projects still receive health
+checks and automatic artifact/container rollback.
 
 ## Failure and rollback behavior
 
@@ -37,6 +51,11 @@ If Caddy validation or reload fails, the previous project snippet and base
 Caddyfile are restored. Omurga then restores the previous Compose deployment.
 Previous artifacts are retained as `compose.previous.yaml` and
 `<project>-<environment>.caddy.previous` for explicit rollback.
+
+During a blue-green deployment, a failed replacement is stopped and removed;
+the old slot and its Caddy route remain active. If deployment state cannot be
+stored after the gateway switch, Omurga restores the previous route and removes
+the replacement before returning the error.
 
 `project rollback` validates and health-checks the previous Compose artifact
 before committing the operation. Caddy follows the same validation and reload

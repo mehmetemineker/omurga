@@ -5,4 +5,5 @@
 /.idea/
 /.vscode/
 *.age
-
+/.tmp-*/
+/build/
