@@ -66,7 +66,7 @@ For a Raspberry Pi or another `arm64` host, download the `arm64` package. For
 
 ```bash
 curl -fL -o /tmp/omurga.deb \
-  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_arm64.deb"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.2.0/omurga_0.2.0_arm64.deb"
 sudo apt install /tmp/omurga.deb
 ```
 
@@ -74,7 +74,7 @@ For an `amd64` host, use this package name instead:
 
 ```bash
 curl -fL -o /tmp/omurga.deb \
-  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_amd64.deb"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.2.0/omurga_0.2.0_amd64.deb"
 sudo apt install /tmp/omurga.deb
 ```
 
@@ -82,7 +82,7 @@ If you prefer the standalone binary on an `arm64` host:
 
 ```bash
 curl -fL -o /tmp/omurga \
-  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga-linux-arm64"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.2.0/omurga-linux-arm64"
 sudo install -m 0755 /tmp/omurga /usr/local/bin/omurga
 ```
 

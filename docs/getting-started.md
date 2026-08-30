@@ -34,11 +34,11 @@ Download the asset matching the host architecture from the repository’s
 ```bash
 # Raspberry Pi and other 64-bit ARM hosts
 curl -fL -o /tmp/omurga.deb \
-  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_arm64.deb"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.2.0/omurga_0.2.0_arm64.deb"
 
 # Intel or AMD hosts use this filename instead:
 # curl -fL -o /tmp/omurga.deb \
-#   "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga_0.1.1_amd64.deb"
+#   "https://github.com/mehmetemineker/omurga/releases/download/v0.2.0/omurga_0.2.0_amd64.deb"
 
 sudo apt install /tmp/omurga.deb
 omurga version
@@ -49,7 +49,7 @@ install a Debian package. The following command is for `arm64` hosts:
 
 ```bash
 curl -fL -o /tmp/omurga \
-  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga-linux-arm64"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.2.0/omurga-linux-arm64"
 sudo install -m 0755 /tmp/omurga /usr/local/bin/omurga
 ```
 
@@ -57,7 +57,7 @@ For an `amd64` host, download this binary instead:
 
 ```bash
 curl -fL -o /tmp/omurga \
-  "https://github.com/mehmetemineker/omurga/releases/download/v0.1.1/omurga-linux-amd64"
+  "https://github.com/mehmetemineker/omurga/releases/download/v0.2.0/omurga-linux-amd64"
 sudo install -m 0755 /tmp/omurga /usr/local/bin/omurga
 ```
 
