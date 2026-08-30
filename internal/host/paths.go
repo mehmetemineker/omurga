@@ -12,6 +12,7 @@ type Paths struct {
 	ConfigRoot     string
 	ConfigFile     string
 	AlertConfig    string
+	AlertState     string
 	ProjectsConfig string
 	Secrets        string
 	Keys           string
@@ -34,6 +35,7 @@ type Paths struct {
 	CaddyKey       string
 	CaddySource    string
 	CaddyFile      string
+	CaddyDataRoot  string
 }
 
 type Directory struct {
@@ -56,6 +58,7 @@ func DefaultPaths(root string) Paths {
 		ConfigRoot:     join("etc/omurga"),
 		ConfigFile:     join("etc/omurga/config.yaml"),
 		AlertConfig:    join("etc/omurga/alerts.yaml"),
+		AlertState:     join("var/lib/omurga/alert-state.json"),
 		ProjectsConfig: join("etc/omurga/projects"),
 		Secrets:        join("etc/omurga/secrets"),
 		Keys:           join("etc/omurga/keys"),
@@ -78,6 +81,7 @@ func DefaultPaths(root string) Paths {
 		CaddyKey:       join("usr/share/keyrings/caddy-stable-archive-keyring.gpg"),
 		CaddySource:    join("etc/apt/sources.list.d/caddy-stable.list"),
 		CaddyFile:      join("etc/caddy/Caddyfile"),
+		CaddyDataRoot:  join("var/lib/caddy/.local/share/caddy"),
 	}
 }
 

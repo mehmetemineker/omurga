@@ -2,12 +2,19 @@ package host
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeRunner struct {
@@ -110,6 +117,46 @@ func TestDoctorReportsCaddyServiceConfigAccessFailure(t *testing.T) {
 		}
 	}
 	t.Fatal("Caddy service config check was not reported")
+}
+
+func TestRunMonitorReportsFailedServices(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	runner := healthyRunner()
+	runner.outputs[commandKey("systemctl", "--failed", "--no-legend", "--no-pager")] = "caddy.service loaded failed failed Caddy"
+
+	checks := RunMonitor(context.Background(), paths, runner, MonitorOptions{})
+	for _, check := range checks {
+		if check.Name == "services" {
+			if check.Status != CheckCritical || !strings.Contains(check.Message, "caddy.service") {
+				t.Fatalf("unexpected service monitor result: %#v", check)
+			}
+			return
+		}
+	}
+	t.Fatal("service monitor check was not reported")
+}
+
+func TestMonitorReportsExpiringCertificate(t *testing.T) {
+	root := t.TempDir()
+	certificatePath := filepath.Join(root, "example.crt")
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "example.com"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(certificatePath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	check := monitorCertificates([]string{root}, 30)
+	if check.Status != CheckWarning || !strings.Contains(check.Message, "example.crt") {
+		t.Fatalf("unexpected certificate monitor result: %#v", check)
+	}
 }
 
 func healthyRunner() *fakeRunner {

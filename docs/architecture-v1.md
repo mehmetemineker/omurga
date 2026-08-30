@@ -21,6 +21,8 @@ repeatable operations.
 - Restic is the backup engine; PostgreSQL uses `pg_dump` and Redis uses snapshots.
 - The first remote backup targets are S3-compatible storage and SFTP.
 - The first alert channels are Telegram and SMTP email.
+- Host monitoring checks disk capacity, failed services, and Caddy certificate
+  expiry through a persistent systemd timer.
 - Remote hosts are managed over SSH without a continuously running Omurga daemon.
 
 ## Host directories
@@ -100,7 +102,8 @@ successful only after it reaches the remote destination. Default retention is
 
 Doctor checks the operating system, reboot requirements, disk and inode usage,
 Docker, Caddy, Caddy's service-account access to its configuration, container
-health, secret file permissions, state integrity, and systemd backup timers.
+health, secret file permissions, state integrity, systemd backup timers, disk
+capacity, failed services, and certificate expiry.
 It provides both human-readable and JSON output.
 
 ## Security boundaries

@@ -3,7 +3,9 @@ package alert
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +14,8 @@ import (
 	"net/mail"
 	"net/smtp"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +26,17 @@ import (
 type Config struct {
 	Telegram TelegramConfig `yaml:"telegram,omitempty" json:"telegram"`
 	SMTP     SMTPConfig     `yaml:"smtp,omitempty" json:"smtp"`
+	Monitor  MonitorConfig  `yaml:"monitor,omitempty" json:"monitor"`
+}
+
+type MonitorConfig struct {
+	Enabled                bool     `yaml:"enabled,omitempty" json:"enabled"`
+	Schedule               string   `yaml:"schedule,omitempty" json:"schedule,omitempty"`
+	DiskWarningPercent     int      `yaml:"diskWarningPercent,omitempty" json:"diskWarningPercent,omitempty"`
+	DiskCriticalPercent    int      `yaml:"diskCriticalPercent,omitempty" json:"diskCriticalPercent,omitempty"`
+	CertificateWarningDays int      `yaml:"certificateWarningDays,omitempty" json:"certificateWarningDays,omitempty"`
+	Services               []string `yaml:"services,omitempty" json:"services,omitempty"`
+	CertificateRoots       []string `yaml:"certificateRoots,omitempty" json:"certificateRoots,omitempty"`
 }
 
 type TelegramConfig struct {
@@ -52,6 +67,7 @@ func Load(path string) (Config, error) {
 	if err := decoder.Decode(&config); err != nil {
 		return Config{}, fmt.Errorf("could not decode alert configuration: %w", err)
 	}
+	config.Monitor = withMonitorDefaults(config.Monitor)
 	if err := Validate(config); err != nil {
 		return Config{}, err
 	}
@@ -72,6 +88,128 @@ func Validate(config Config) error {
 		if config.SMTP.TLS != "starttls" && config.SMTP.TLS != "implicit" {
 			return fmt.Errorf("SMTP tls must be starttls or implicit")
 		}
+	}
+	monitor := withMonitorDefaults(config.Monitor)
+	if monitor.DiskWarningPercent < 1 || monitor.DiskWarningPercent > 99 || monitor.DiskCriticalPercent < 1 || monitor.DiskCriticalPercent > 100 || monitor.DiskWarningPercent >= monitor.DiskCriticalPercent {
+		return fmt.Errorf("monitor disk thresholds must be between 1 and 100, with warning below critical")
+	}
+	if monitor.CertificateWarningDays < 1 {
+		return fmt.Errorf("monitor certificateWarningDays must be at least 1")
+	}
+	return nil
+}
+
+func withMonitorDefaults(config MonitorConfig) MonitorConfig {
+	if config.Schedule == "" {
+		config.Schedule = "*-*-* *:00/15:00"
+	}
+	if config.DiskWarningPercent == 0 {
+		config.DiskWarningPercent = 80
+	}
+	if config.DiskCriticalPercent == 0 {
+		config.DiskCriticalPercent = 90
+	}
+	if config.CertificateWarningDays == 0 {
+		config.CertificateWarningDays = 30
+	}
+	return config
+}
+
+type MonitorIssue struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type MonitorState struct {
+	Issues map[string]string `json:"issues"`
+}
+
+type MonitorDelta struct {
+	NewIssues []MonitorIssue
+	Resolved  []string
+	NextState MonitorState
+}
+
+func CompareMonitorState(previous MonitorState, current []MonitorIssue) MonitorDelta {
+	if previous.Issues == nil {
+		previous.Issues = map[string]string{}
+	}
+	next := MonitorState{Issues: map[string]string{}}
+	delta := MonitorDelta{NextState: next}
+	for _, issue := range current {
+		if issue.Status == "pass" {
+			continue
+		}
+		fingerprint := monitorFingerprint(issue)
+		delta.NextState.Issues[issue.Name] = fingerprint
+		if previous.Issues[issue.Name] != fingerprint {
+			delta.NewIssues = append(delta.NewIssues, issue)
+		}
+	}
+	for name := range previous.Issues {
+		if _, active := delta.NextState.Issues[name]; !active {
+			delta.Resolved = append(delta.Resolved, name)
+		}
+	}
+	sort.Strings(delta.Resolved)
+	sort.Slice(delta.NewIssues, func(i, j int) bool { return delta.NewIssues[i].Name < delta.NewIssues[j].Name })
+	return delta
+}
+
+func monitorFingerprint(issue MonitorIssue) string {
+	hash := sha256.Sum256([]byte(issue.Status + "\x00" + issue.Message))
+	return hex.EncodeToString(hash[:])
+}
+
+func LoadMonitorState(path string) (MonitorState, error) {
+	content, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return MonitorState{Issues: map[string]string{}}, nil
+	}
+	if err != nil {
+		return MonitorState{}, fmt.Errorf("could not read monitor state: %w", err)
+	}
+	var state MonitorState
+	if err := json.Unmarshal(content, &state); err != nil {
+		return MonitorState{}, fmt.Errorf("could not decode monitor state: %w", err)
+	}
+	if state.Issues == nil {
+		state.Issues = map[string]string{}
+	}
+	return state, nil
+}
+
+func SaveMonitorState(path string, state MonitorState) error {
+	if state.Issues == nil {
+		state.Issues = map[string]string{}
+	}
+	content, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("could not encode monitor state: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("could not create monitor state directory: %w", err)
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".omurga-alert-state-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(append(content, '\n')); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("could not replace monitor state: %w", err)
 	}
 	return nil
 }

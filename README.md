@@ -219,7 +219,17 @@ sudo omurga --env production --yes backup prune ./demo --password-file /etc/omur
 
 Telegram and SMTP settings are read from `/etc/omurga/alerts.yaml`. Tokens and
 passwords are referenced through credential files. Test configured channels
-with `sudo omurga alert test --channel all`.
+with `sudo omurga alert test --channel all`. Host monitoring checks disk usage,
+failed services, and Caddy certificate expiry:
+
+```bash
+sudo omurga alert check
+sudo omurga alert schedule
+```
+
+Configure thresholds and monitored services in the `monitor` section of
+`/etc/omurga/alerts.yaml`. Repeated unchanged issues are suppressed and a
+recovery notification is sent when the issue is resolved.
 
 ## Documentation
 

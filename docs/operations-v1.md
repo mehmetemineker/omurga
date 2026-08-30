@@ -59,6 +59,16 @@ smtp:
   to:
     - ops@example.com
   tls: starttls
+
+monitor:
+  enabled: true
+  schedule: "*-*-* *:00/15:00"
+  diskWarningPercent: 80
+  diskCriticalPercent: 90
+  certificateWarningDays: 30
+  services:
+    - docker
+    - caddy
 ```
 
 SMTP supports `starttls` and `implicit`; TLS 1.2 or newer is mandatory.
@@ -66,3 +76,27 @@ Telegram uses the HTTPS Bot API `sendMessage` method. `alert test` can target
 `telegram`, `email`, or `all`. Project events listed under `alerts.on` trigger
 best-effort notifications for deployment and backup failures.
 
+## Host monitoring alerts
+
+`alert check` checks root filesystem capacity, failed systemd units, configured
+service activity, and Caddy certificates under
+`/var/lib/caddy/.local/share/caddy`. Disk usage is a warning at 80% and
+critical at 90% by default. Certificates expiring within 30 days produce a
+warning; expired or unreadable certificates produce a critical alert. These
+values can be changed under `monitor`.
+
+The command sends only new or changed issues and sends a recovery notification
+when an issue disappears. Monitor state is stored in
+`/var/lib/omurga/alert-state.json` with mode `0600`.
+
+Enable periodic checks with the systemd timer:
+
+```bash
+sudo omurga alert check
+sudo omurga alert schedule
+sudo omurga alert unschedule
+```
+
+Additional certificate directories can be supplied with
+`monitor.certificateRoots`. Additional systemd services can be listed under
+`monitor.services`.
