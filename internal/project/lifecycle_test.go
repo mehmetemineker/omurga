@@ -416,7 +416,8 @@ func TestExecUsesActiveDeploymentAndDeclaredService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Exec() error = %v", err)
 	}
-	if output.String() != "ready\n" || !strings.Contains(strings.Join(result.Command, " "), "compose --project-name demo-production --file") || !strings.Contains(strings.Join(result.Command, " "), "exec --no-TTY app nginx -T") {
+	composeCommand := strings.Join(result.Command, " ")
+	if output.String() != "ready\n" || !strings.Contains(composeCommand, "compose --project-name "+ComposeProjectName("demo", "production")+" --file") || !strings.Contains(composeCommand, "exec --no-TTY app nginx -T") {
 		t.Fatalf("unexpected exec result: %#v output=%q calls=%v", result, output.String(), runner.calls)
 	}
 	if _, err := lifecycle.Exec(ctx, loaded, "missing", ExecOptions{Command: []string{"true"}}, true, nil, output, output); err == nil {
