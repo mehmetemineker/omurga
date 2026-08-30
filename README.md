@@ -202,6 +202,43 @@ sudo omurga service install redis --name cache
 PostgreSQL restore creates a pre-restore safety dump by default. Shared-service
 removal preserves its bind-mounted data unless explicit purge flags are used.
 
+## Prometheus and Grafana monitoring
+
+Omurga can install a self-contained monitoring stack for host and container
+metrics. The stack includes Prometheus, Grafana, Node Exporter, and cAdvisor.
+Images are pinned and the official images support the Raspberry Pi `arm64`
+platform.
+
+```bash
+sudo omurga monitoring install
+sudo omurga monitoring status
+```
+
+Prometheus and Grafana bind to `127.0.0.1` by default. Access them through an
+SSH tunnel:
+
+```bash
+ssh -L 3000:127.0.0.1:3000 user@server
+```
+
+Then open `http://127.0.0.1:3000`. Omurga creates a random Grafana admin
+password in `/etc/omurga/monitoring/grafana-admin-password` on first install.
+The password file is root-only. Custom ports or a LAN bind address can be
+selected explicitly:
+
+```bash
+sudo omurga monitoring install --bind-address 192.168.0.50 \
+  --prometheus-port 9090 --grafana-port 3000
+```
+
+The stack can be removed without deleting its data. Use the purge flag only
+when the stored time series and Grafana data should be permanently deleted:
+
+```bash
+sudo omurga monitoring remove
+sudo omurga --yes monitoring remove --purge-data
+```
+
 ## Restic backups and alerts
 
 Backups use Restic and support local, SFTP, S3-compatible, and other Restic

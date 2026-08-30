@@ -106,3 +106,23 @@ sudo omurga alert unschedule
 Additional certificate directories can be supplied with
 `monitor.certificateRoots`. Additional systemd services can be listed under
 `monitor.services`.
+
+## Prometheus and Grafana
+
+The optional monitoring stack is managed independently from application
+projects:
+
+```bash
+sudo omurga monitoring install
+sudo omurga monitoring status
+```
+
+It runs Prometheus, Grafana, Node Exporter, and cAdvisor on a dedicated Docker
+network. Prometheus stores 15 days of host and container metrics by default.
+Grafana is provisioned with a Prometheus datasource automatically. The host
+ports bind to loopback by default; use an SSH tunnel or configure an explicit
+bind address when LAN access is required. Grafana credentials are stored in a
+root-only file under `/etc/omurga/monitoring`.
+
+Monitoring data is preserved by `monitoring remove` and can be permanently
+deleted with `sudo omurga --yes monitoring remove --purge-data`.

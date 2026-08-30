@@ -277,7 +277,7 @@ func parseDFPercentage(output string) (int, error) {
 
 func checkSecretPermissions(paths Paths, report *DoctorReport) {
 	problems := []string{}
-	for _, root := range []string{paths.Secrets, paths.Keys, paths.RuntimeSecrets} {
+	for _, root := range []string{paths.Secrets, paths.Keys, paths.RuntimeSecrets, paths.MonitoringConfig} {
 		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 			if err != nil {
 				if !os.IsNotExist(err) {

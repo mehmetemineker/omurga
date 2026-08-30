@@ -74,6 +74,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newBackupCommand(opts))
 	cmd.AddCommand(newRegistryCommand(opts))
 	cmd.AddCommand(newAlertCommand(opts))
+	cmd.AddCommand(newMonitoringCommand(opts))
 
 	return cmd
 }

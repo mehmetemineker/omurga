@@ -24,6 +24,8 @@ repeatable operations.
 - Host monitoring checks CPU load, memory, disk capacity, failed services,
   managed container health, and Caddy certificate expiry through a persistent
   systemd timer.
+- Optional monitoring runs Prometheus, Grafana, Node Exporter, and cAdvisor as
+  a dedicated managed Docker stack.
 - Remote hosts are managed over SSH without a continuously running Omurga daemon.
 
 ## Host directories
@@ -39,6 +41,8 @@ repeatable operations.
 /var/lib/omurga/state.db
 /var/lib/omurga/projects/<project>/<environment>/compose.yaml
 /var/lib/omurga/projects/<project>/<environment>/data/
+/var/lib/omurga/services/monitoring/data/
+/etc/omurga/monitoring/grafana-admin-password
 /var/backups/omurga/staging/
 /var/log/omurga/audit.jsonl
 /run/omurga/secrets/<project>/<environment>/
