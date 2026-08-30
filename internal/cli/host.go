@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"omurga/internal/host"
+	"omurga/internal/progress"
 )
 
 func newHostCommand(opts *options) *cobra.Command {
@@ -62,7 +63,7 @@ func newHostInitCommand(opts *options) *cobra.Command {
 			installations, err := runHostInstallers(cmd.Context(), paths, result.OS, host.InstallOptions{
 				DryRun:                 opts.dryRun,
 				ReplaceDockerConflicts: replaceDockerConflicts,
-			}, !skipDocker, !skipCaddy, !skipRestic)
+			}, !skipDocker, !skipCaddy, !skipRestic, progress.FromContext(cmd.Context()))
 			if err != nil {
 				return err
 			}
@@ -110,7 +111,7 @@ func newHostInstallCommand(opts *options) *cobra.Command {
 			installations, err := runHostInstallers(cmd.Context(), paths, release, host.InstallOptions{
 				DryRun:                 opts.dryRun,
 				ReplaceDockerConflicts: replaceDockerConflicts,
-			}, component == "docker" || component == "all", component == "caddy" || component == "all", component == "restic" || component == "all")
+			}, component == "docker" || component == "all", component == "caddy" || component == "all", component == "restic" || component == "all", progress.FromContext(cmd.Context()))
 			if err != nil {
 				return err
 			}
@@ -149,7 +150,7 @@ func newHostUpdateCommand(opts *options) *cobra.Command {
 				}
 			}
 
-			result, err := host.UpdatePackages(cmd.Context(), runner, provider, full, opts.dryRun)
+			result, err := host.UpdatePackagesWithProgress(cmd.Context(), runner, provider, full, opts.dryRun, progress.FromContext(cmd.Context()))
 			if err != nil {
 				return err
 			}
@@ -281,8 +282,8 @@ func writeInstallResults(writer io.Writer, results []host.InstallResult, opts *o
 	return nil
 }
 
-func runHostInstallers(ctx context.Context, paths host.Paths, release host.OSRelease, options host.InstallOptions, installDocker, installCaddy, installRestic bool) ([]host.InstallResult, error) {
-	installer := host.NewInstaller(paths)
+func runHostInstallers(ctx context.Context, paths host.Paths, release host.OSRelease, options host.InstallOptions, installDocker, installCaddy, installRestic bool, reporter *progress.Reporter) ([]host.InstallResult, error) {
+	installer := host.NewInstaller(paths).WithProgress(reporter)
 	results := make([]host.InstallResult, 0, 3)
 	if installDocker {
 		result, err := installer.InstallDocker(ctx, release, options)

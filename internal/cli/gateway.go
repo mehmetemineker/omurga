@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"omurga/internal/host"
+	"omurga/internal/progress"
 )
 
 type gatewayResult struct {
@@ -87,18 +88,24 @@ func newGatewayActionCommand(opts *options, action string) *cobra.Command {
 				return err
 			}
 		}
+		task := progress.FromContext(cmd.Context()).Start("Validate Caddy configuration")
 		output, err := runner.Run(cmd.Context(), "caddy", "validate", "--config", paths.CaddyFile, "--adapter", "caddyfile")
 		if err != nil {
+			task.Fail(err)
 			return err
 		}
+		task.Complete()
 		result.Output = output
 		if action == "reload" {
 			reload := services.ReloadCommand("caddy")
 			result.Command = append([]string{reload.Name}, reload.Args...)
+			task = progress.FromContext(cmd.Context()).Start("Reload Caddy")
 			output, err = runner.Run(cmd.Context(), reload.Name, reload.Args...)
 			if err != nil {
+				task.Fail(err)
 				return err
 			}
+			task.Complete()
 			result.Output = output
 		}
 		return writeGatewayResult(cmd, opts, result)

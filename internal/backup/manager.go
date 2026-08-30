@@ -2,15 +2,20 @@ package backup
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"omurga/internal/host"
+	"omurga/internal/progress"
 )
 
 var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -20,6 +25,7 @@ type Manager struct {
 	Repository      string
 	PasswordFile    string
 	EnvironmentFile string
+	Progress        *progress.Reporter
 }
 
 func (m Manager) ValidateCredentials() error {
@@ -56,13 +62,119 @@ func (m Manager) Run(ctx context.Context, action string, args ...string) (string
 		return "", err
 	}
 	command := m.Command(action, args...)
+	if m.Progress != nil && (action == "backup" || action == "restore") {
+		if runner, ok := m.Runner.(host.EnvironmentIORunner); ok {
+			return m.runWithJSONProgress(ctx, runner, environment, action, command)
+		}
+	}
+	task := m.Progress.Start("Restic " + action)
 	if runner, ok := m.Runner.(host.EnvironmentRunner); ok {
-		return runner.RunEnvironment(ctx, environment, "restic", command...)
+		output, runErr := runner.RunEnvironment(ctx, environment, "restic", command...)
+		if runErr != nil {
+			task.Fail(runErr)
+			return output, runErr
+		}
+		task.Complete()
+		return output, nil
 	}
 	if len(environment) > 0 {
+		task.Fail(fmt.Errorf("backup environment files are not supported by the command runner"))
 		return "", fmt.Errorf("backup environment files are not supported by the command runner")
 	}
-	return m.Runner.Run(ctx, "restic", command...)
+	output, runErr := m.Runner.Run(ctx, "restic", command...)
+	if runErr != nil {
+		task.Fail(runErr)
+		return output, runErr
+	}
+	task.Complete()
+	return output, nil
+}
+
+func (m Manager) runWithJSONProgress(ctx context.Context, runner host.EnvironmentIORunner, environment map[string]string, action string, command []string) (string, error) {
+	command = append(command[:4:4], append([]string{"--json"}, command[4:]...)...)
+	task := m.Progress.Start("Restic " + action)
+	reader, writer := io.Pipe()
+	var stderr bytes.Buffer
+	errCh := make(chan error, 1)
+	go func() {
+		err := runner.RunEnvironmentIO(ctx, environment, nil, writer, &stderr, "restic", command...)
+		_ = writer.CloseWithError(err)
+		errCh <- err
+	}()
+
+	scanner := bufio.NewScanner(reader)
+	buffer := make([]byte, 0, 64*1024)
+	scanner.Buffer(buffer, 1024*1024)
+	for scanner.Scan() {
+		if update := resticProgressUpdate(scanner.Bytes()); update != "" {
+			task.Update(update)
+		}
+	}
+	runErr := <-errCh
+	if scanErr := scanner.Err(); scanErr != nil && runErr == nil {
+		runErr = scanErr
+	}
+	if runErr != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message != "" {
+			runErr = fmt.Errorf("%w: %s", runErr, message)
+		}
+		task.Fail(runErr)
+		return "", runErr
+	}
+	task.Complete()
+	return "Restic " + action + " completed", nil
+}
+
+type resticStatus struct {
+	MessageType      string  `json:"message_type"`
+	PercentDone      float64 `json:"percent_done"`
+	BytesDone        uint64  `json:"bytes_done"`
+	TotalBytes       uint64  `json:"total_bytes"`
+	FilesDone        uint64  `json:"files_done"`
+	TotalFiles       uint64  `json:"total_files"`
+	SecondsRemaining float64 `json:"seconds_remaining"`
+	BytesRestored    uint64  `json:"bytes_restored"`
+}
+
+func resticProgressUpdate(line []byte) string {
+	var status resticStatus
+	if err := json.Unmarshal(line, &status); err != nil || status.MessageType != "status" {
+		return ""
+	}
+	done, total := status.BytesDone, status.TotalBytes
+	if status.BytesRestored > 0 {
+		done = status.BytesRestored
+	}
+	if total == 0 {
+		return ""
+	}
+	percent := status.PercentDone * 100
+	if percent == 0 && done > 0 {
+		percent = float64(done) * 100 / float64(total)
+	}
+	message := fmt.Sprintf("%.0f%% · %s / %s", percent, humanBytes(done), humanBytes(total))
+	if status.TotalFiles > 0 {
+		message += fmt.Sprintf(" · %d / %d files", status.FilesDone, status.TotalFiles)
+	}
+	if status.SecondsRemaining >= 1 {
+		message += " · ETA " + time.Duration(status.SecondsRemaining*float64(time.Second)).Round(time.Second).String()
+	}
+	return message
+}
+
+func humanBytes(value uint64) string {
+	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
+	amount := float64(value)
+	index := 0
+	for amount >= 1024 && index < len(units)-1 {
+		amount /= 1024
+		index++
+	}
+	if index == 0 {
+		return fmt.Sprintf("%d %s", value, units[index])
+	}
+	return fmt.Sprintf("%.1f %s", amount, units[index])
 }
 
 func LoadEnvironmentFile(path string) (map[string]string, error) {

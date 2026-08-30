@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"omurga/internal/progress"
 )
 
 type PackageCommand struct {
@@ -19,6 +21,10 @@ type UpdateResult struct {
 }
 
 func UpdatePackages(ctx context.Context, runner Runner, provider DistributionProvider, full, dryRun bool) (UpdateResult, error) {
+	return UpdatePackagesWithProgress(ctx, runner, provider, full, dryRun, nil)
+}
+
+func UpdatePackagesWithProgress(ctx context.Context, runner Runner, provider DistributionProvider, full, dryRun bool, reporter *progress.Reporter) (UpdateResult, error) {
 	if provider == nil {
 		return UpdateResult{}, fmt.Errorf("distribution provider is required")
 	}
@@ -42,9 +48,12 @@ func UpdatePackages(ctx context.Context, runner Runner, provider DistributionPro
 	}
 
 	for _, command := range result.Commands {
+		task := reporter.Start("Run " + command.Name + " " + strings.Join(command.Args, " "))
 		if _, err := runner.Run(ctx, command.Name, command.Args...); err != nil {
+			task.Fail(err)
 			return result, fmt.Errorf("package update failed while running %s %s: %w", command.Name, strings.Join(command.Args, " "), err)
 		}
+		task.Complete()
 	}
 	return result, nil
 }

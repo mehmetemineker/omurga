@@ -16,6 +16,7 @@ import (
 	"omurga/internal/gateway"
 	"omurga/internal/host"
 	"omurga/internal/manifest"
+	"omurga/internal/progress"
 	projectruntime "omurga/internal/project"
 	"omurga/internal/state"
 )
@@ -170,7 +171,7 @@ func newProjectRollbackCommand(opts *options) *cobra.Command {
 					return err
 				}
 			}
-			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun)
+			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun, progress.FromContext(cmd.Context()))
 			if err != nil {
 				return err
 			}
@@ -206,7 +207,7 @@ func newProjectDeleteCommand(opts *options) *cobra.Command {
 					return err
 				}
 			}
-			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun)
+			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun, progress.FromContext(cmd.Context()))
 			if err != nil {
 				return err
 			}
@@ -257,7 +258,7 @@ func newProjectDeployCommand(opts *options) *cobra.Command {
 					return fmt.Errorf("project deploy requires root privileges; run it with sudo")
 				}
 			}
-			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun)
+			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun, progress.FromContext(cmd.Context()))
 			if err != nil {
 				return err
 			}
@@ -271,8 +272,8 @@ func newProjectDeployCommand(opts *options) *cobra.Command {
 	return cmd
 }
 
-func platformLifecycle(paths host.Paths, runner host.Runner, dryRun bool) (projectruntime.Lifecycle, error) {
-	lifecycle := projectruntime.NewLifecycle(paths, runner)
+func platformLifecycle(paths host.Paths, runner host.Runner, dryRun bool, reporter *progress.Reporter) (projectruntime.Lifecycle, error) {
+	lifecycle := projectruntime.NewLifecycle(paths, runner).WithProgress(reporter)
 	if dryRun {
 		return lifecycle, nil
 	}
@@ -333,7 +334,7 @@ func newProjectControlCommand(opts *options, action string) *cobra.Command {
 					return fmt.Errorf("project %s requires root privileges; run it with sudo", action)
 				}
 			}
-			lifecycle := projectruntime.NewLifecycle(host.DefaultPaths("/"), runner)
+			lifecycle := projectruntime.NewLifecycle(host.DefaultPaths("/"), runner).WithProgress(progress.FromContext(cmd.Context()))
 			result, err := lifecycle.Control(cmd.Context(), loaded, action, opts.dryRun)
 			if err != nil {
 				return err

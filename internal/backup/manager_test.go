@@ -53,3 +53,12 @@ func TestParseCalendar(t *testing.T) {
 		t.Fatal("expected invalid time error")
 	}
 }
+
+func TestResticProgressUpdate(t *testing.T) {
+	update := resticProgressUpdate([]byte(`{"message_type":"status","percent_done":0.5,"bytes_done":5242880,"total_bytes":10485760,"files_done":2,"total_files":4,"seconds_remaining":12}`))
+	for _, expected := range []string{"50%", "5.0 MiB / 10.0 MiB", "2 / 4 files", "ETA 12s"} {
+		if !strings.Contains(update, expected) {
+			t.Fatalf("expected %q in %q", expected, update)
+		}
+	}
+}

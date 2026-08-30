@@ -141,11 +141,11 @@ func (l Lifecycle) Rollback(ctx context.Context, loaded manifest.LoadedProject, 
 		_ = restoreFile(layout.PreviousCompose, previousCompose)
 		return RollbackResult{}, fmt.Errorf("could not activate previous Compose artifact: %w", err)
 	}
-	if _, err := l.Runner.Run(ctx, "docker", composeArgs(layout, loaded.Project.Name, environment, "config", "--quiet")...); err != nil {
+	if _, err := l.runStep(ctx, "Validate previous Compose configuration", "docker", composeArgs(layout, loaded.Project.Name, environment, "config", "--quiet")...); err != nil {
 		restoreErr := errors.Join(restoreFile(layout.Compose, currentCompose), restoreFile(layout.PreviousCompose, previousCompose))
 		return RollbackResult{}, errors.Join(fmt.Errorf("previous Compose configuration is invalid: %w", err), restoreErr)
 	}
-	if _, err := l.Runner.Run(ctx, "docker", composeArgs(layout, loaded.Project.Name, environment,
+	if _, err := l.runStep(ctx, "Start and health-check previous containers", "docker", composeArgs(layout, loaded.Project.Name, environment,
 		"up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...); err != nil {
 		restoreErr := errors.Join(l.restoreRollbackCompose(ctx, layout, loaded.Project.Name, environment, currentCompose), restoreFile(layout.PreviousCompose, previousCompose))
 		return RollbackResult{}, errors.Join(fmt.Errorf("previous project containers did not become healthy: %w", err), restoreErr)
@@ -221,7 +221,7 @@ func (l Lifecycle) Delete(ctx context.Context, loaded manifest.LoadedProject, op
 		}
 	}
 	if composeExists {
-		if _, err := l.Runner.Run(ctx, "docker", composeArgs(layout, loaded.Project.Name, environment, "down", "--remove-orphans")...); err != nil {
+		if _, err := l.runStep(ctx, "Remove project containers", "docker", composeArgs(layout, loaded.Project.Name, environment, "down", "--remove-orphans")...); err != nil {
 			return DeleteResult{}, fmt.Errorf("could not remove project containers: %w", err)
 		}
 	}
@@ -295,7 +295,7 @@ func (l Lifecycle) restoreRollbackCompose(ctx context.Context, layout Deployment
 	if err := restoreFile(layout.Compose, current); err != nil {
 		return err
 	}
-	if _, err := l.Runner.Run(ctx, "docker", composeArgs(layout, project, environment,
+	if _, err := l.runStep(ctx, "Restore current project containers", "docker", composeArgs(layout, project, environment,
 		"up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...); err != nil {
 		return fmt.Errorf("could not restore current project containers: %w", err)
 	}

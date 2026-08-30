@@ -16,6 +16,7 @@ import (
 	"omurga/internal/gateway"
 	"omurga/internal/host"
 	"omurga/internal/manifest"
+	"omurga/internal/progress"
 	"omurga/internal/secret"
 	"omurga/internal/state"
 )
@@ -30,6 +31,7 @@ type Lifecycle struct {
 	Paths    host.Paths
 	Runner   host.Runner
 	Services host.ServiceManager
+	Progress *progress.Reporter
 }
 
 type DeploymentLayout struct {
@@ -84,6 +86,22 @@ func (l Lifecycle) WithServiceManager(services host.ServiceManager) Lifecycle {
 		l.Services = services
 	}
 	return l
+}
+
+func (l Lifecycle) WithProgress(reporter *progress.Reporter) Lifecycle {
+	l.Progress = reporter
+	return l
+}
+
+func (l Lifecycle) runStep(ctx context.Context, label, name string, args ...string) (string, error) {
+	task := l.Progress.Start(label)
+	output, err := l.Runner.Run(ctx, name, args...)
+	if err != nil {
+		task.Fail(err)
+		return output, err
+	}
+	task.Complete()
+	return output, nil
 }
 
 func (l Lifecycle) serviceManager() host.ServiceManager {
@@ -180,11 +198,11 @@ func (l Lifecycle) Deploy(ctx context.Context, loaded manifest.LoadedProject, dr
 	if err := WriteArtifact(layout.Compose, artifacts.Compose, 0o640); err != nil {
 		return DeployResult{}, fmt.Errorf("could not write Compose artifact: %w", err)
 	}
-	if _, err := l.Runner.Run(ctx, "docker", composeArgs(layout, loaded.Project.Name, loaded.Environment, "config", "--quiet")...); err != nil {
+	if _, err := l.runStep(ctx, "Validate generated Compose configuration", "docker", composeArgs(layout, loaded.Project.Name, loaded.Environment, "config", "--quiet")...); err != nil {
 		restoreErr := restoreFile(layout.Compose, composeSnapshot)
 		return DeployResult{}, errors.Join(fmt.Errorf("generated Compose configuration is invalid: %w", err), restoreErr)
 	}
-	if _, err := l.Runner.Run(ctx, "docker", composeArgs(layout, loaded.Project.Name, loaded.Environment,
+	if _, err := l.runStep(ctx, "Start and health-check project containers", "docker", composeArgs(layout, loaded.Project.Name, loaded.Environment,
 		"up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...); err != nil {
 		rollbackErr := l.rollbackCompose(ctx, layout, loaded.Project.Name, loaded.Environment, composeSnapshot)
 		return DeployResult{}, errors.Join(fmt.Errorf("project containers did not become healthy: %w", err), rollbackErr)
@@ -277,7 +295,7 @@ func (l Lifecycle) Control(ctx context.Context, loaded manifest.LoadedProject, a
 	} else if !exists {
 		return ControlResult{}, fmt.Errorf("project %s/%s is not deployed", result.Project, environment)
 	}
-	if _, err := l.Runner.Run(ctx, "docker", args...); err != nil {
+	if _, err := l.runStep(ctx, strings.ToUpper(action[:1])+action[1:]+" project containers", "docker", args...); err != nil {
 		return ControlResult{}, fmt.Errorf("could not %s project containers: %w", action, err)
 	}
 	status := "running"
@@ -366,15 +384,15 @@ func (l Lifecycle) applyCaddy(ctx context.Context, layout DeploymentLayout, cont
 		_ = restoreFile(layout.Caddy, snippetSnapshot)
 		return err
 	}
-	if _, err := l.Runner.Run(ctx, "caddy", "validate", "--config", l.Paths.CaddyFile, "--adapter", "caddyfile"); err != nil {
+	if _, err := l.runStep(ctx, "Validate Caddy configuration", "caddy", "validate", "--config", l.Paths.CaddyFile, "--adapter", "caddyfile"); err != nil {
 		restoreErr := errors.Join(restoreFile(layout.Caddy, snippetSnapshot), restoreCaddyFile(l.Paths.CaddyFile, baseSnapshot))
 		return errors.Join(fmt.Errorf("generated Caddy configuration is invalid: %w", err), restoreErr)
 	}
 	reload := l.serviceManager().ReloadCommand("caddy")
-	if _, err := l.Runner.Run(ctx, reload.Name, reload.Args...); err != nil {
+	if _, err := l.runStep(ctx, "Reload Caddy", reload.Name, reload.Args...); err != nil {
 		restoreErr := errors.Join(restoreFile(layout.Caddy, snippetSnapshot), restoreCaddyFile(l.Paths.CaddyFile, baseSnapshot))
 		if restoreErr == nil {
-			_, restoreErr = l.Runner.Run(ctx, reload.Name, reload.Args...)
+			_, restoreErr = l.runStep(ctx, "Restore Caddy", reload.Name, reload.Args...)
 		}
 		return errors.Join(fmt.Errorf("could not reload Caddy: %w", err), restoreErr)
 	}
@@ -386,13 +404,13 @@ func (l Lifecycle) rollbackCompose(ctx context.Context, layout DeploymentLayout,
 		if err := restoreFile(layout.Compose, snapshot); err != nil {
 			return fmt.Errorf("could not restore previous Compose artifact: %w", err)
 		}
-		if _, err := l.Runner.Run(ctx, "docker", composeArgs(layout, projectName, environment,
+		if _, err := l.runStep(ctx, "Restore previous project containers", "docker", composeArgs(layout, projectName, environment,
 			"up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", fmt.Sprint(defaultDeployWaitSeconds))...); err != nil {
 			return fmt.Errorf("could not restore previous project containers: %w", err)
 		}
 		return nil
 	}
-	_, downErr := l.Runner.Run(ctx, "docker", composeArgs(layout, projectName, environment, "down", "--remove-orphans")...)
+	_, downErr := l.runStep(ctx, "Remove project containers after failed deployment", "docker", composeArgs(layout, projectName, environment, "down", "--remove-orphans")...)
 	restoreErr := restoreFile(layout.Compose, snapshot)
 	if downErr != nil {
 		downErr = fmt.Errorf("could not remove failed project containers: %w", downErr)

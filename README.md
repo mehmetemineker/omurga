@@ -9,6 +9,18 @@ The v1 command surface is implemented. Official host support covers Ubuntu
 require root, support `--dry-run`, and can run through an SSH host profile
 without an Omurga daemon.
 
+## Progress output
+
+Long-running commands report activity on standard error. Interactive terminals
+show a spinner and elapsed time; redirected output and SSH sessions show stable
+start and completion lines instead. Restic backup and restore additionally show
+bytes, file counts, percentage, and an ETA when Restic provides it.
+
+Use `--progress auto` (the default), `--progress tty`, `--progress plain`, or
+`--progress off` to select the display. Progress is disabled automatically for
+`--json`, `--quiet`, and `--dry-run`, so machine-readable and planned output
+remain unchanged.
+
 ## Development
 
 Omurga requires Go 1.23 or later:

@@ -31,10 +31,13 @@ func (i Installer) configureRepositories(ctx context.Context, result *InstallRes
 		}
 		data := append([]byte(nil), file.Content...)
 		if file.URL != "" {
+			task := i.Progress.Start("Download " + filepath.Base(file.Path))
 			data, err = i.Downloader.Download(ctx, file.URL)
 			if err != nil {
+				task.Fail(err)
 				return fmt.Errorf("could not download %s: %w", file.Path, err)
 			}
+			task.Complete()
 		}
 		if len(data) == 0 {
 			return fmt.Errorf("repository artifact %s is empty", file.Path)

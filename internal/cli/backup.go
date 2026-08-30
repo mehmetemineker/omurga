@@ -16,6 +16,7 @@ import (
 	"omurga/internal/gateway"
 	"omurga/internal/host"
 	"omurga/internal/manifest"
+	"omurga/internal/progress"
 	projectruntime "omurga/internal/project"
 	"omurga/internal/secret"
 )
@@ -86,6 +87,7 @@ func newBackupCreateCommand(opts *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		manager.Progress = progress.FromContext(cmd.Context())
 		environment := gateway.EnvironmentKey(loaded.Environment)
 		paths := host.DefaultPaths("/")
 		layout := projectruntime.NewLifecycle(paths, host.ExecRunner{}).Layout(loaded.Project.Name, environment)
@@ -168,23 +170,30 @@ func prepareBackupStaging(cmd *cobra.Command, loaded manifest.LoadedProject, lay
 			return root, err
 		}
 		args := append(compose, "exec", "-T", name, "pg_dump", "-U", dependency.User, "-d", dependency.Database, "--format=custom")
+		task := progress.FromContext(cmd.Context()).Start("Create PostgreSQL dump for " + name)
 		runErr := (host.ExecRunner{}).RunIO(cmd.Context(), nil, file, cmd.ErrOrStderr(), "docker", args...)
 		closeErr := file.Close()
 		if runErr != nil || closeErr != nil {
+			task.Fail(errors.Join(runErr, closeErr))
 			return root, errors.Join(runErr, closeErr)
 		}
+		task.Complete()
 	}
 	for _, name := range loaded.Project.Backup.Include.Redis {
 		dependency, exists := loaded.Project.Dependencies[name]
 		if !exists || dependency.Type != "redis" || dependency.Mode == "shared" {
 			return root, fmt.Errorf("backup Redis selection %s is not a project-scoped instance", name)
 		}
+		task := progress.FromContext(cmd.Context()).Start("Create Redis snapshot for " + name)
 		if _, err := (host.ExecRunner{}).Run(cmd.Context(), "docker", append(compose, "exec", "-T", name, "redis-cli", "SAVE")...); err != nil {
+			task.Fail(err)
 			return root, err
 		}
 		if _, err := (host.ExecRunner{}).Run(cmd.Context(), "docker", append(compose, "cp", name+":/data/dump.rdb", filepath.Join(root, name+".rdb"))...); err != nil {
+			task.Fail(err)
 			return root, err
 		}
+		task.Complete()
 	}
 	return root, nil
 }
@@ -213,6 +222,7 @@ func newBackupRepositoryCommand(opts *options, action string) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		manager.Progress = progress.FromContext(cmd.Context())
 		resticAction := "snapshots"
 		arguments := []string{"--tag", "project=" + loaded.Project.Name, "--tag", "environment=" + gateway.EnvironmentKey(loaded.Environment), "--json"}
 		if action == "show" {
@@ -249,6 +259,7 @@ func newBackupRestoreCommand(opts *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		manager.Progress = progress.FromContext(cmd.Context())
 		if target == "" {
 			target = filepath.Join(host.DefaultPaths("/").BackupStaging, "restore-"+loaded.Project.Name+"-"+time.Now().UTC().Format("20060102T150405Z"))
 		}
@@ -284,6 +295,7 @@ func newBackupPruneCommand(opts *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		manager.Progress = progress.FromContext(cmd.Context())
 		retention := loaded.Project.Backup.Retention
 		if retention.Daily == 0 && retention.Weekly == 0 && retention.Monthly == 0 {
 			retention.Daily, retention.Weekly, retention.Monthly = 7, 4, 6
@@ -321,6 +333,7 @@ func newBackupScheduleCommand(opts *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		manager.Progress = progress.FromContext(cmd.Context())
 		if calendar == "" {
 			calendar = loaded.Project.Backup.Schedule
 		}

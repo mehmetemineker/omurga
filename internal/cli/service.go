@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"omurga/internal/host"
+	"omurga/internal/progress"
 	projectruntime "omurga/internal/project"
 	"omurga/internal/shared"
 )
@@ -96,10 +97,13 @@ func newServiceInstallCommand(opts *options) *cobra.Command {
 		if err := projectruntime.WriteArtifact(composePath, content, 0o640); err != nil {
 			return err
 		}
+		task := progress.FromContext(cmd.Context()).Start("Start and health-check shared service containers")
 		output, err := (host.ExecRunner{}).Run(cmd.Context(), command[0], command[1:]...)
 		if err != nil {
+			task.Fail(err)
 			return err
 		}
+		task.Complete()
 		return writeServiceAction(cmd, opts, name, "install", command, []string{composePath, dataPath}, output)
 	}}
 	cmd.Flags().StringVar(&name, "name", "", "shared service instance name")
@@ -139,10 +143,13 @@ func newServiceStatusCommand(opts *options) *cobra.Command {
 		if opts.dryRun {
 			return writeServiceAction(cmd, opts, args[0], "status", command, nil, "")
 		}
+		task := progress.FromContext(cmd.Context()).Start("Remove shared service containers")
 		output, err := (host.ExecRunner{}).Run(cmd.Context(), command[0], command[1:]...)
 		if err != nil {
+			task.Fail(err)
 			return err
 		}
+		task.Complete()
 		return writeServiceAction(cmd, opts, args[0], "status", command, nil, output)
 	}}
 }

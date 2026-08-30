@@ -15,6 +15,7 @@ import (
 	"omurga/internal/gateway"
 	"omurga/internal/host"
 	"omurga/internal/manifest"
+	"omurga/internal/progress"
 )
 
 func newAlertCommand(opts *options) *cobra.Command {
@@ -89,9 +90,12 @@ func newAlertTestCommand(opts *options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			task := progress.FromContext(cmd.Context()).Start("Send test alert")
 			if err := alert.Send(cmd.Context(), config, channel, "Omurga test alert", message); err != nil {
+				task.Fail(err)
 				return err
 			}
+			task.Complete()
 		}
 		if opts.quiet {
 			return nil

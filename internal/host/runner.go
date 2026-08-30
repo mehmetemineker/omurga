@@ -26,6 +26,10 @@ type EnvironmentRunner interface {
 	RunEnvironment(ctx context.Context, environment map[string]string, name string, args ...string) (string, error)
 }
 
+type EnvironmentIORunner interface {
+	RunEnvironmentIO(ctx context.Context, environment map[string]string, stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error
+}
+
 type ExecRunner struct{}
 
 func (ExecRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
@@ -79,8 +83,19 @@ func (ExecRunner) Stream(ctx context.Context, stdout, stderr io.Writer, name str
 }
 
 func (ExecRunner) RunIO(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
+	return ExecRunner{}.RunEnvironmentIO(ctx, nil, stdin, stdout, stderr, name, args...)
+}
+
+func (ExecRunner) RunEnvironmentIO(ctx context.Context, environment map[string]string, stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 	command := exec.CommandContext(ctx, name, args...)
-	command.Env = os.Environ()
+	overrides := make(map[string]string, len(environment)+1)
+	for key, value := range environment {
+		overrides[key] = value
+	}
+	if name == "apt-get" {
+		overrides["DEBIAN_FRONTEND"] = "noninteractive"
+	}
+	command.Env = mergedEnvironment(os.Environ(), overrides)
 	command.Stdin = stdin
 	command.Stdout = stdout
 	command.Stderr = stderr

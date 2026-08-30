@@ -18,6 +18,7 @@ import (
 	"omurga/internal/gateway"
 	"omurga/internal/host"
 	"omurga/internal/manifest"
+	"omurga/internal/progress"
 	projectruntime "omurga/internal/project"
 )
 
@@ -225,12 +226,15 @@ func newPostgresBackupCommand(opts *options) *cobra.Command {
 		if err != nil {
 			return fmt.Errorf("could not create dump file: %w", err)
 		}
+		task := progress.FromContext(cmd.Context()).Start("Create PostgreSQL dump")
 		runErr := (host.ExecRunner{}).RunIO(cmd.Context(), nil, file, cmd.ErrOrStderr(), "docker", command...)
 		closeErr := file.Close()
 		if runErr != nil || closeErr != nil {
+			task.Fail(errors.Join(runErr, closeErr))
 			_ = os.Remove(output)
 			return errors.Join(runErr, closeErr)
 		}
+		task.Complete()
 		return writeDataResult(cmd.OutOrStdout(), result, opts)
 	}}
 	cmd.Flags().StringVar(&instance, "instance", "", "PostgreSQL dependency name")
@@ -272,12 +276,15 @@ func newPostgresRestoreCommand(opts *options) *cobra.Command {
 				return fmt.Errorf("could not create safety backup: %w", err)
 			}
 			dumpCommand := append(compose, "exec", "-T", selected, "pg_dump", "-U", dependency.User, "-d", dependency.Database, "--format=custom")
+			task := progress.FromContext(cmd.Context()).Start("Create pre-restore PostgreSQL safety dump")
 			runErr := (host.ExecRunner{}).RunIO(cmd.Context(), nil, safetyFile, cmd.ErrOrStderr(), "docker", dumpCommand...)
 			closeErr := safetyFile.Close()
 			if runErr != nil || closeErr != nil {
+				task.Fail(errors.Join(runErr, closeErr))
 				_ = os.Remove(safetyPath)
 				return fmt.Errorf("could not create pre-restore safety backup: %w", errors.Join(runErr, closeErr))
 			}
+			task.Complete()
 			result.SafetyBackup = safetyPath
 		}
 		file, err := os.Open(input)
@@ -285,9 +292,12 @@ func newPostgresRestoreCommand(opts *options) *cobra.Command {
 			return err
 		}
 		defer file.Close()
+		task := progress.FromContext(cmd.Context()).Start("Restore PostgreSQL dump")
 		if err := (host.ExecRunner{}).RunIO(cmd.Context(), file, cmd.OutOrStdout(), cmd.ErrOrStderr(), "docker", command...); err != nil {
+			task.Fail(err)
 			return err
 		}
+		task.Complete()
 		return writeDataResult(cmd.OutOrStdout(), result, opts)
 	}}
 	cmd.Flags().StringVar(&instance, "instance", "", "PostgreSQL dependency name")
@@ -315,7 +325,9 @@ func newRedisBackupCommand(opts *options) *cobra.Command {
 		if err := requireRoot(cmd.Context(), host.ExecRunner{}, "redis backup"); err != nil {
 			return err
 		}
+		task := progress.FromContext(cmd.Context()).Start("Create Redis snapshot")
 		if _, err := (host.ExecRunner{}).Run(cmd.Context(), "docker", command...); err != nil {
+			task.Fail(err)
 			return err
 		}
 		if err := os.MkdirAll(filepath.Dir(output), 0o700); err != nil {
@@ -323,8 +335,10 @@ func newRedisBackupCommand(opts *options) *cobra.Command {
 		}
 		copyCommand := append(compose, "cp", selected+":/data/dump.rdb", output)
 		if _, err := (host.ExecRunner{}).Run(cmd.Context(), "docker", copyCommand...); err != nil {
+			task.Fail(err)
 			return err
 		}
+		task.Complete()
 		return writeDataResult(cmd.OutOrStdout(), result, opts)
 	}}
 	cmd.Flags().StringVar(&instance, "instance", "", "Redis dependency name")

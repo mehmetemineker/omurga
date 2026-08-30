@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"omurga/internal/progress"
 )
 
 const (
@@ -38,6 +40,12 @@ type Installer struct {
 	Runner     Runner
 	Downloader Downloader
 	Provider   DistributionProvider
+	Progress   *progress.Reporter
+}
+
+func (i Installer) WithProgress(reporter *progress.Reporter) Installer {
+	i.Progress = reporter
+	return i
 }
 
 func (i Installer) providerFor(release OSRelease) (DistributionProvider, error) {
@@ -71,11 +79,14 @@ func (i Installer) validate() error {
 func (i Installer) runStep(ctx context.Context, result *InstallResult, options InstallOptions, name, command string, args ...string) error {
 	step := InstallStep{Name: name, Command: append([]string{command}, args...), Status: "planned"}
 	if !options.DryRun {
+		task := i.Progress.Start(name)
 		if _, err := i.Runner.Run(ctx, command, args...); err != nil {
+			task.Fail(err)
 			step.Status = "failed"
 			result.Steps = append(result.Steps, step)
 			return err
 		}
+		task.Complete()
 		step.Status = "completed"
 	}
 	result.Steps = append(result.Steps, step)

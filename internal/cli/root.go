@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"omurga/internal/buildinfo"
+	"omurga/internal/progress"
 )
 
 type options struct {
@@ -19,6 +20,7 @@ type options struct {
 	quiet       bool
 	dryRun      bool
 	yes         bool
+	progress    string
 }
 
 func Execute() error {
@@ -39,6 +41,14 @@ func NewRootCommand() *cobra.Command {
 			if opts.json && opts.quiet {
 				return fmt.Errorf("--json and --quiet cannot be used together")
 			}
+			mode, err := progress.ParseMode(opts.progress)
+			if err != nil {
+				return err
+			}
+			if opts.json || opts.quiet || opts.dryRun {
+				mode = progress.ModeOff
+			}
+			cmd.SetContext(progress.WithReporter(cmd.Context(), progress.New(cmd.ErrOrStderr(), mode)))
 			return executeRemoteIfRequested(cmd, opts)
 		},
 	}
@@ -49,6 +59,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().BoolVarP(&opts.quiet, "quiet", "q", false, "suppress successful output")
 	cmd.PersistentFlags().BoolVar(&opts.dryRun, "dry-run", false, "show the plan without making changes")
 	cmd.PersistentFlags().BoolVarP(&opts.yes, "yes", "y", false, "automatically accept safe confirmation prompts")
+	cmd.PersistentFlags().StringVar(&opts.progress, "progress", "auto", "progress display: auto, tty, plain, or off")
 
 	cmd.AddCommand(newVersionCommand(opts))
 	cmd.AddCommand(newDoctorCommand(opts, "doctor"))

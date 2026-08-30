@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"omurga/internal/host"
+	"omurga/internal/progress"
 	registrystore "omurga/internal/registry"
 )
 
@@ -96,9 +97,12 @@ func newRegistryLoginCommand(opts *options) *cobra.Command {
 			return err
 		}
 		var output bytes.Buffer
+		task := progress.FromContext(cmd.Context()).Start("Sign in to Docker registry")
 		if err := (host.ExecRunner{}).RunIO(cmd.Context(), bytes.NewReader(password), &output, cmd.ErrOrStderr(), "docker", "login", profile.Address, "--username", username, "--password-stdin"); err != nil {
+			task.Fail(err)
 			return err
 		}
+		task.Complete()
 		return writeRegistryResult(cmd, opts, args[0], profile, "login", strings.TrimSpace(output.String()))
 	}}
 	cmd.Flags().StringVar(&passwordFile, "password-file", "", "read the registry password from a file, or - for standard input")
