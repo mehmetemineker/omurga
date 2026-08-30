@@ -281,6 +281,7 @@ The user-facing documentation is published at
 
 - [Architecture](docs/architecture-v1.md)
 - [Platform providers](docs/platform-providers-v1.md)
+- [Deploy a project end to end](docs/deploy-a-project.md)
 - [Project manifest](docs/project-manifest-v1.md)
 - [Project lifecycle](docs/project-lifecycle-v1.md)
 - [Secrets](docs/secrets-v1.md)
