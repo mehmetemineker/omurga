@@ -271,6 +271,11 @@ notification is sent when the issue is resolved.
 
 ## Documentation
 
+The user-facing documentation is published at
+[mehmetemineker.github.io/omurga](https://mehmetemineker.github.io/omurga/).
+See [publishing this site](docs/publishing.md) for GitHub Pages setup and
+local preview instructions.
+
 - [Architecture](docs/architecture-v1.md)
 - [Platform providers](docs/platform-providers-v1.md)
 - [Project manifest](docs/project-manifest-v1.md)

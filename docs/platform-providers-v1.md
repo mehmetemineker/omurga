@@ -1,3 +1,8 @@
+---
+layout: default
+title: Platform providers
+---
+
 # Omurga platform providers v1
 
 ## Support matrix

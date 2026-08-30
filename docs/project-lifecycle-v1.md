@@ -1,3 +1,8 @@
+---
+layout: default
+title: Project lifecycle
+---
+
 # Omurga project lifecycle v1
 
 The project lifecycle manages a project on a local supported Linux host. Remote

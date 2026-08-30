@@ -1,3 +1,8 @@
+---
+layout: default
+title: Architecture
+---
+
 # Omurga v1 architecture
 
 ## Purpose

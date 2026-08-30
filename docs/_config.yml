@@ -1,0 +1,13 @@
+title: Omurga Documentation
+description: Declarative Linux host and Docker project operations with Omurga.
+url: "https://mehmetemineker.github.io"
+baseurl: "/omurga"
+markdown: kramdown
+highlighter: rouge
+permalink: pretty
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor

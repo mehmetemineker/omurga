@@ -1,3 +1,8 @@
+---
+layout: default
+title: Project manifest specification
+---
+
 # Project manifest v1
 
 ## Files

@@ -1,3 +1,8 @@
+---
+layout: default
+title: Secrets
+---
+
 # Secret management
 
 Omurga uses one age X25519 identity per host. The private identity is generated
@@ -32,4 +37,3 @@ identical mode, UID, and GID settings. Omurga validates this before deployment.
 
 Manual runtime files remain supported for migration when no encrypted store
 exists. They must be regular files with no group or other permissions.
-

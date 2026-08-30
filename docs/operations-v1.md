@@ -1,3 +1,8 @@
+---
+layout: default
+title: Operations design
+---
+
 # Backups and alerts
 
 ## Restic repositories

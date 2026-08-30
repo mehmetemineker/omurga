@@ -1,3 +1,8 @@
+---
+layout: default
+title: State model
+---
+
 # Omurga operational state v1
 
 Omurga stores host-local operational state in `/var/lib/omurga/state.db`. The

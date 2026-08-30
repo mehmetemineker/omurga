@@ -1,3 +1,8 @@
+---
+layout: default
+title: Remote hosts
+---
+
 # Remote host management
 
 Remote execution uses OpenSSH and does not require a resident Omurga daemon.
