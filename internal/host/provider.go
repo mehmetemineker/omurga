@@ -52,6 +52,7 @@ type ServiceManager interface {
 	Name() string
 	VersionCommand() PackageCommand
 	EnableNowCommand(service string) PackageCommand
+	RestartCommand(service string) PackageCommand
 	DisableNowCommand(service string) PackageCommand
 	IsActiveCommand(service string) PackageCommand
 	ReloadCommand(service string) PackageCommand
@@ -268,6 +269,9 @@ func (systemdServiceManager) VersionCommand() PackageCommand {
 }
 func (systemdServiceManager) EnableNowCommand(service string) PackageCommand {
 	return PackageCommand{Name: "systemctl", Args: []string{"enable", "--now", service}}
+}
+func (systemdServiceManager) RestartCommand(service string) PackageCommand {
+	return PackageCommand{Name: "systemctl", Args: []string{"restart", service}}
 }
 func (systemdServiceManager) DisableNowCommand(service string) PackageCommand {
 	return PackageCommand{Name: "systemctl", Args: []string{"disable", "--now", service}}

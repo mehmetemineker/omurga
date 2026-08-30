@@ -92,6 +92,10 @@ func TestInstallDockerConfiguresOfficialRepository(t *testing.T) {
 	if key, err := os.ReadFile(paths.DockerKey); err != nil || string(key) != "docker-signing-key" {
 		t.Fatalf("unexpected Docker key: %q, %v", key, err)
 	}
+	config, err := os.ReadFile(paths.DockerDaemonConfig)
+	if err != nil || !strings.Contains(string(config), `"log-driver": "local"`) || !strings.Contains(string(config), `"max-size": "10m"`) || !strings.Contains(string(config), `"max-file": "3"`) {
+		t.Fatalf("unexpected Docker daemon configuration: %q, %v", config, err)
+	}
 }
 
 func TestInstallDockerIsNoOpWhenManagedInstallationIsHealthy(t *testing.T) {
@@ -106,6 +110,19 @@ func TestInstallDockerIsNoOpWhenManagedInstallationIsHealthy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(paths.DockerSource, []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(paths.DockerDaemonConfig), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.DockerDaemonConfig, []byte(`{
+  "log-driver": "local",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	runner := &fakeRunner{

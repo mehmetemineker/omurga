@@ -18,12 +18,34 @@ func (i Installer) InstallDocker(ctx context.Context, release OSRelease, options
 	packages := provider.PackageManager()
 	services := provider.ServiceManager()
 
-	if packages.IsInstalled(ctx, i.Runner, "docker-ce") &&
+	dockerRuntimeHealthy := packages.IsInstalled(ctx, i.Runner, "docker-ce") &&
 		fileExists(i.Paths.DockerKey) && fileExists(i.Paths.DockerSource) &&
 		commandHealthy(ctx, i.Runner, "docker", "info", "--format", "{{.ServerVersion}}") &&
-		commandHealthy(ctx, i.Runner, "docker", "compose", "version", "--short") {
-		result.AlreadyInstalled = true
-		result.Steps = append(result.Steps, InstallStep{Name: "verify Docker Engine and Compose", Status: "unchanged"})
+		commandHealthy(ctx, i.Runner, "docker", "compose", "version", "--short")
+	if dockerRuntimeHealthy {
+		configured, err := dockerLogRotationConfigured(i.Paths.DockerDaemonConfig)
+		if err != nil {
+			return result, err
+		}
+		if configured {
+			result.AlreadyInstalled = true
+			result.Steps = append(result.Steps, InstallStep{Name: "verify Docker Engine, Compose, and log rotation", Status: "unchanged"})
+			return result, nil
+		}
+		changed, err := ensureDockerLogRotation(i.Paths.DockerDaemonConfig, options.DryRun)
+		if err != nil {
+			return result, fmt.Errorf("could not configure Docker log rotation: %w", err)
+		}
+		i.fileStep(&result, options, "configure Docker log rotation", i.Paths.DockerDaemonConfig, changed)
+		if err := i.runCommand(ctx, &result, options, "restart Docker to apply log rotation", services.RestartCommand("docker")); err != nil {
+			return result, err
+		}
+		if err := i.runStep(ctx, &result, options, "verify Docker Engine", "docker", "info", "--format", "{{.ServerVersion}}"); err != nil {
+			return result, err
+		}
+		if err := i.runStep(ctx, &result, options, "verify Docker Compose", "docker", "compose", "version", "--short"); err != nil {
+			return result, err
+		}
 		return result, nil
 	}
 
@@ -68,6 +90,11 @@ func (i Installer) InstallDocker(ctx context.Context, release OSRelease, options
 	if err := i.runCommand(ctx, &result, options, "install Docker Engine and Compose", packages.InstallCommand(spec.Packages...)); err != nil {
 		return result, err
 	}
+	changed, err := ensureDockerLogRotation(i.Paths.DockerDaemonConfig, options.DryRun)
+	if err != nil {
+		return result, fmt.Errorf("could not configure Docker log rotation: %w", err)
+	}
+	i.fileStep(&result, options, "configure Docker log rotation", i.Paths.DockerDaemonConfig, changed)
 	if err := i.runCommand(ctx, &result, options, "enable and start Docker", services.EnableNowCommand("docker")); err != nil {
 		return result, err
 	}

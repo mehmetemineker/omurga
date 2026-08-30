@@ -38,6 +38,31 @@ sudo omurga doctor --json
 The `host status` and `host doctor` commands are aliases for the same health
 check behavior in the current CLI.
 
+## Docker log rotation
+
+Docker installation configures `/etc/docker/daemon.json` with the `local` log
+driver, a maximum log file size of `10m`, and three rotated files per
+container. This limits normal container logs to approximately 30 MB per
+container and preserves other valid Docker daemon settings.
+
+Repair the configuration on an existing Docker host with:
+
+```bash
+sudo omurga --dry-run host install docker
+sudo omurga host install docker
+```
+
+New settings apply to newly created containers. Recreate existing project
+containers when necessary:
+
+```bash
+sudo docker compose up -d --force-recreate
+```
+
+The `local` driver keeps `docker logs` available. Applications that write log
+files inside volumes or bind mounts need a separate application policy or
+`logrotate` configuration.
+
 ## UFW firewall
 
 Install or repair the host firewall with Omurga. Preview the commands before

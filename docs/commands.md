@@ -96,6 +96,9 @@ sudo omurga host init --replace-conflicting-docker
 Install or repair one component. `<component>` is `docker`, `caddy`, `restic`,
 `ufw`, `fail2ban`, or `all`.
 
+Docker installation also configures the default container log rotation policy:
+the `local` driver, `10m` maximum file size, and three rotated files.
+
 Option:
 
 - `--replace-conflicting-docker` — allow replacement of conflicting Docker packages.
