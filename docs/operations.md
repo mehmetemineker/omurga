@@ -59,31 +59,12 @@ loopback:
 sudo omurga webhook serve --listen 127.0.0.1:8090
 ```
 
-For a persistent installation, run the listener under systemd:
-
-```ini
-# /etc/systemd/system/omurga-webhook.service
-[Unit]
-Description=Omurga image deployment webhook
-After=network-online.target docker.service
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=root
-ExecStart=/usr/local/bin/omurga webhook serve --listen 127.0.0.1:8090
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable it with:
+Install and enable the systemd service automatically:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now omurga-webhook
+sudo omurga --dry-run webhook install --binary /usr/local/bin/omurga
+sudo omurga webhook install --binary /usr/local/bin/omurga
+sudo omurga webhook status
 ```
 
 Expose the loopback listener through a Caddy HTTPS site:

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,6 +22,8 @@ func newWebhookCommand(opts *options) *cobra.Command {
 	return newGroupCommand("webhook", "Manage secure image deployment webhooks",
 		newWebhookAddCommand(opts),
 		newWebhookListCommand(opts),
+		newWebhookInstallCommand(opts),
+		newWebhookStatusCommand(opts),
 		newWebhookServeCommand(opts),
 	)
 }
@@ -167,4 +171,87 @@ func newWebhookServeCommand(opts *options) *cobra.Command {
 	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8090", "HTTP address to listen on")
 	cmd.Flags().StringVar(&configPath, "config", "", "webhook configuration path")
 	return cmd
+}
+
+func newWebhookInstallCommand(opts *options) *cobra.Command {
+	var binary, listen, configPath string
+	cmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install and enable the webhook systemd service",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			paths := host.DefaultPaths("/")
+			if configPath == "" {
+				configPath = paths.WebhookConfig
+			}
+			if binary == "" {
+				var err error
+				binary, err = os.Executable()
+				if err != nil {
+					return fmt.Errorf("could not determine Omurga executable: %w", err)
+				}
+			}
+			if !filepath.IsAbs(binary) || !filepath.IsAbs(configPath) {
+				return fmt.Errorf("webhook service binary and config paths must be absolute")
+			}
+			if strings.TrimSpace(listen) == "" || strings.ContainsAny(listen, " \t\r\n") {
+				return fmt.Errorf("webhook listen address must not be empty or contain whitespace")
+			}
+			if _, err := webhook.LoadRuntimeHooks(configPath); err != nil {
+				return err
+			}
+			unit, err := webhook.RenderServiceUnit(binary, listen, configPath)
+			if err != nil {
+				return err
+			}
+			if opts.dryRun {
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "would install %s\n\n%s", paths.WebhookServiceUnit, unit)
+				return err
+			}
+			if err := requireRoot(cmd.Context(), host.ExecRunner{}, "webhook install"); err != nil {
+				return err
+			}
+			if err := webhook.WriteServiceUnit(paths.WebhookServiceUnit, unit); err != nil {
+				return err
+			}
+			runner := host.ExecRunner{}
+			if _, err := runner.Run(cmd.Context(), "systemctl", "daemon-reload"); err != nil {
+				return err
+			}
+			if _, err := runner.Run(cmd.Context(), "systemctl", "enable", "--now", webhook.ServiceName()); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "installed and enabled %s\n", webhook.ServiceName())
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&binary, "binary", "", "absolute path to the Omurga executable")
+	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8090", "HTTP address for the webhook service")
+	cmd.Flags().StringVar(&configPath, "config", "", "webhook configuration path")
+	return cmd
+}
+
+func newWebhookStatusCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Show the webhook systemd service status",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			output, err := (host.ExecRunner{}).Run(cmd.Context(), "systemctl", "is-active", webhook.ServiceName())
+			if err != nil {
+				return fmt.Errorf("webhook service is not active: %w", err)
+			}
+			if opts.json {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]string{"service": webhook.ServiceName(), "status": strings.TrimSpace(output)})
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", webhook.ServiceName(), strings.TrimSpace(output))
+			return err
+		},
+	}
 }

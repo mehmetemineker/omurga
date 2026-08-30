@@ -78,6 +78,21 @@ The endpoint for the example above is `/webhooks/demo-production`. Put it
 behind Caddy or another TLS-terminating reverse proxy before exposing it to a
 CI provider.
 
+### `omurga webhook install`
+
+Install and enable `omurga-webhook.service` automatically. The command
+validates the webhook configuration before writing the unit:
+
+```bash
+sudo omurga --dry-run webhook install --binary /usr/local/bin/omurga
+sudo omurga webhook install --binary /usr/local/bin/omurga
+sudo omurga webhook status
+```
+
+The service runs as root because it performs Docker and Caddy deployments, but
+the listener binds to `127.0.0.1:8090` by default. Use Caddy for public HTTPS
+access.
+
 ## Top-level commands
 
 ### `omurga version`

@@ -170,7 +170,9 @@ sudo omurga host install all
 sudo omurga host install ufw --ssh-port 22
 sudo omurga host install unattended-upgrades
 sudo omurga host install restic
-sudo omurga webhook serve --listen 127.0.0.1:8090
+sudo omurga --dry-run webhook install --binary /usr/local/bin/omurga
+sudo omurga webhook install --binary /usr/local/bin/omurga
+sudo omurga webhook status
 omurga doctor
 ```
 

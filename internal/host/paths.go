@@ -28,6 +28,7 @@ type Paths struct {
 	BackupStaging      string
 	BackupConfig       string
 	SystemdUnits       string
+	WebhookServiceUnit string
 	LogRoot            string
 	RuntimeRoot        string
 	RuntimeSecrets     string
@@ -82,6 +83,7 @@ func DefaultPaths(root string) Paths {
 		BackupStaging:      join("var/backups/omurga/staging"),
 		BackupConfig:       join("etc/omurga/backup"),
 		SystemdUnits:       join("etc/systemd/system"),
+		WebhookServiceUnit: join("etc/systemd/system/omurga-webhook.service"),
 		LogRoot:            join("var/log/omurga"),
 		RuntimeRoot:        join("run/omurga"),
 		RuntimeSecrets:     join("run/omurga/secrets"),
