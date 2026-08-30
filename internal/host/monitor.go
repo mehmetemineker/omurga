@@ -169,7 +169,9 @@ func monitorServices(ctx context.Context, runner Runner, services []string) Chec
 	failed := make([]string, 0)
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) > 0 {
+		// systemctl may print a summary such as "0 loaded units listed."
+		// Failed unit names always have a unit suffix (for example .service).
+		if len(fields) > 0 && strings.Contains(fields[0], ".") {
 			failed = append(failed, fields[0])
 		}
 	}
