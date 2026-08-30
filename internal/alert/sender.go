@@ -30,17 +30,18 @@ type Config struct {
 }
 
 type MonitorConfig struct {
-	Enabled                bool     `yaml:"enabled,omitempty" json:"enabled"`
-	Schedule               string   `yaml:"schedule,omitempty" json:"schedule,omitempty"`
-	CPUWarningPercent      int      `yaml:"cpuWarningPercent,omitempty" json:"cpuWarningPercent,omitempty"`
-	CPUCriticalPercent     int      `yaml:"cpuCriticalPercent,omitempty" json:"cpuCriticalPercent,omitempty"`
-	MemoryWarningPercent   int      `yaml:"memoryWarningPercent,omitempty" json:"memoryWarningPercent,omitempty"`
-	MemoryCriticalPercent  int      `yaml:"memoryCriticalPercent,omitempty" json:"memoryCriticalPercent,omitempty"`
-	DiskWarningPercent     int      `yaml:"diskWarningPercent,omitempty" json:"diskWarningPercent,omitempty"`
-	DiskCriticalPercent    int      `yaml:"diskCriticalPercent,omitempty" json:"diskCriticalPercent,omitempty"`
-	CertificateWarningDays int      `yaml:"certificateWarningDays,omitempty" json:"certificateWarningDays,omitempty"`
-	Services               []string `yaml:"services,omitempty" json:"services,omitempty"`
-	CertificateRoots       []string `yaml:"certificateRoots,omitempty" json:"certificateRoots,omitempty"`
+	Enabled                bool                `yaml:"enabled,omitempty" json:"enabled"`
+	Schedule               string              `yaml:"schedule,omitempty" json:"schedule,omitempty"`
+	CPUWarningPercent      int                 `yaml:"cpuWarningPercent,omitempty" json:"cpuWarningPercent,omitempty"`
+	CPUCriticalPercent     int                 `yaml:"cpuCriticalPercent,omitempty" json:"cpuCriticalPercent,omitempty"`
+	MemoryWarningPercent   int                 `yaml:"memoryWarningPercent,omitempty" json:"memoryWarningPercent,omitempty"`
+	MemoryCriticalPercent  int                 `yaml:"memoryCriticalPercent,omitempty" json:"memoryCriticalPercent,omitempty"`
+	DiskWarningPercent     int                 `yaml:"diskWarningPercent,omitempty" json:"diskWarningPercent,omitempty"`
+	DiskCriticalPercent    int                 `yaml:"diskCriticalPercent,omitempty" json:"diskCriticalPercent,omitempty"`
+	CertificateWarningDays int                 `yaml:"certificateWarningDays,omitempty" json:"certificateWarningDays,omitempty"`
+	Services               []string            `yaml:"services,omitempty" json:"services,omitempty"`
+	CertificateRoots       []string            `yaml:"certificateRoots,omitempty" json:"certificateRoots,omitempty"`
+	Spike                  ResourceSpikeConfig `yaml:"spike,omitempty" json:"spike,omitempty"`
 }
 
 type TelegramConfig struct {
@@ -106,12 +107,15 @@ func Validate(config Config) error {
 	if monitor.CertificateWarningDays < 1 {
 		return fmt.Errorf("monitor certificateWarningDays must be at least 1")
 	}
+	if err := ValidateResourceSpikeConfig(monitor.Spike); err != nil {
+		return err
+	}
 	return nil
 }
 
 func withMonitorDefaults(config MonitorConfig) MonitorConfig {
 	if config.Schedule == "" {
-		config.Schedule = "*-*-* *:00/15:00"
+		config.Schedule = "*-*-* *:00/1:00"
 	}
 	if config.DiskWarningPercent == 0 {
 		config.DiskWarningPercent = 80
@@ -134,6 +138,7 @@ func withMonitorDefaults(config MonitorConfig) MonitorConfig {
 	if config.CertificateWarningDays == 0 {
 		config.CertificateWarningDays = 30
 	}
+	config.Spike = withResourceSpikeDefaults(config.Spike)
 	return config
 }
 
@@ -151,7 +156,8 @@ type MonitorIssue struct {
 }
 
 type MonitorState struct {
-	Issues map[string]string `json:"issues"`
+	Issues map[string]string  `json:"issues"`
+	Spikes ResourceSpikeState `json:"spikes,omitempty"`
 }
 
 type MonitorDelta struct {
@@ -164,7 +170,7 @@ func CompareMonitorState(previous MonitorState, current []MonitorIssue) MonitorD
 	if previous.Issues == nil {
 		previous.Issues = map[string]string{}
 	}
-	next := MonitorState{Issues: map[string]string{}}
+	next := MonitorState{Issues: map[string]string{}, Spikes: previous.Spikes}
 	delta := MonitorDelta{NextState: next}
 	for _, issue := range current {
 		if issue.Status == "pass" {

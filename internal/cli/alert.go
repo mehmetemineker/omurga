@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -65,6 +66,7 @@ func newAlertCheckCommand(opts *options) *cobra.Command {
 			}
 			issues = append(issues, alert.MonitorIssue{Name: check.Name, Status: string(check.Status), Message: check.Message})
 		}
+		metrics := host.RunResourceMetrics(cmd.Context(), paths, host.ExecRunner{})
 		state := alert.MonitorState{Issues: map[string]string{}}
 		if !opts.dryRun {
 			state, err = alert.LoadMonitorState(paths.AlertState)
@@ -73,16 +75,23 @@ func newAlertCheckCommand(opts *options) *cobra.Command {
 			}
 		}
 		delta := alert.CompareMonitorState(state, issues)
-		result := alertCheckResult{Checks: checks, New: delta.NewIssues, Resolved: delta.Resolved, DryRun: opts.dryRun}
-		if !opts.dryRun && (len(delta.NewIssues) > 0 || len(delta.Resolved) > 0) {
-			message := formatMonitorAlert(delta.NewIssues, delta.Resolved)
+		spikeDelta := alert.EvaluateResourceSpikes(config.Monitor.Spike, state, metrics, time.Now())
+		newIssues := append(append([]alert.MonitorIssue{}, delta.NewIssues...), spikeDelta.NewIssues...)
+		resolved := append(append([]string{}, delta.Resolved...), spikeDelta.Resolved...)
+		nextState := delta.NextState
+		nextState.Spikes = spikeDelta.NextState
+		result := alertCheckResult{Checks: checks, New: newIssues, Resolved: resolved, DryRun: opts.dryRun}
+		if !opts.dryRun && (len(newIssues) > 0 || len(resolved) > 0) {
+			message := formatMonitorAlert(newIssues, resolved)
 			task := progress.FromContext(cmd.Context()).Start("Send host monitor alert")
 			if err := alert.Send(cmd.Context(), config, channel, "Omurga host monitor", message); err != nil {
 				task.Fail(err)
 				return err
 			}
 			task.Complete()
-			if err := alert.SaveMonitorState(paths.AlertState, delta.NextState); err != nil {
+		}
+		if !opts.dryRun {
+			if err := alert.SaveMonitorState(paths.AlertState, nextState); err != nil {
 				return err
 			}
 		}
@@ -97,7 +106,7 @@ func newAlertCheckCommand(opts *options) *cobra.Command {
 				return err
 			}
 		}
-		if len(delta.NewIssues) == 0 && len(delta.Resolved) == 0 {
+		if len(newIssues) == 0 && len(resolved) == 0 {
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), "no new or resolved host alerts")
 			return err
 		}

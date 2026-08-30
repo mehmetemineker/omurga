@@ -67,7 +67,7 @@ smtp:
 
 monitor:
   enabled: true
-  schedule: "*-*-* *:00/15:00"
+  schedule: "*-*-* *:00/1:00"
   cpuWarningPercent: 80
   cpuCriticalPercent: 95
   memoryWarningPercent: 80
@@ -95,6 +95,30 @@ critical at 90% by default. CPU load is a warning at 80% and critical at 95%;
 memory usage is a warning at 80% and critical at 90%. Certificates expiring
 within 30 days produce a warning; expired or unreadable certificates produce a
 critical alert. These values can be changed under `monitor`.
+
+Resource spike detection compares host and managed-container CPU, memory, and
+disk values with a rolling baseline. By default, a spike must exceed the
+configured increase and minimum value for two consecutive samples. Spikes are
+kept out of the baseline, repeated notifications are suppressed for 30 minutes,
+and a recovery notification is sent after usage returns below the rule. Configure
+it under `monitor.spike`:
+
+```yaml
+monitor:
+  spike:
+    enabled: true
+    baselineSamples: 3
+    consecutiveSamples: 2
+    cooldownMinutes: 30
+    cpuIncreasePercent: 30
+    memoryIncreasePercent: 20
+    diskIncreasePercent: 5
+    containerCPUIncreasePercent: 30
+    containerMemoryIncreasePercent: 20
+    cpuMinimumPercent: 70
+    memoryMinimumPercent: 70
+    diskMinimumPercent: 80
+```
 
 The command sends only new or changed issues and sends a recovery notification
 when an issue disappears. Monitor state is stored in

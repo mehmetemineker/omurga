@@ -26,6 +26,12 @@ type MonitorOptions struct {
 	CertificateRoots       []string
 }
 
+type ResourceMetric struct {
+	Name  string
+	Value float64
+	Unit  string
+}
+
 // RunMonitor performs the checks used by scheduled alert monitoring. It does
 // not send notifications; callers decide which channels should receive issues.
 func RunMonitor(ctx context.Context, paths Paths, runner Runner, options MonitorOptions) []Check {
@@ -38,6 +44,21 @@ func RunMonitor(ctx context.Context, paths Paths, runner Runner, options Monitor
 	checks = append(checks, monitorContainers(ctx, runner))
 	checks = append(checks, monitorCertificates(options.CertificateRoots, options.CertificateWarningDays))
 	return checks
+}
+
+func RunResourceMetrics(ctx context.Context, paths Paths, runner Runner) []ResourceMetric {
+	metrics := make([]ResourceMetric, 0, 3)
+	if value, err := readCPUMetric(paths); err == nil {
+		metrics = append(metrics, ResourceMetric{Name: "host.cpu", Value: value, Unit: "percent"})
+	}
+	if value, err := readMemoryMetric(paths); err == nil {
+		metrics = append(metrics, ResourceMetric{Name: "host.memory", Value: value, Unit: "percent"})
+	}
+	if value, err := readDiskMetric(ctx, runner, paths.Root); err == nil {
+		metrics = append(metrics, ResourceMetric{Name: "host.disk", Value: float64(value), Unit: "percent"})
+	}
+	metrics = append(metrics, readContainerResourceMetrics(ctx, runner)...)
+	return metrics
 }
 
 func normalizeMonitorOptions(options MonitorOptions, paths Paths) MonitorOptions {
@@ -69,44 +90,65 @@ func normalizeMonitorOptions(options MonitorOptions, paths Paths) MonitorOptions
 }
 
 func monitorCPU(paths Paths, options MonitorOptions) Check {
-	root := paths.Root
-	if root == "" {
-		root = string(filepath.Separator)
-	}
-	content, err := os.ReadFile(filepath.Join(root, "proc", "loadavg"))
+	percent, err := readCPUMetric(paths)
 	if err != nil {
-		return Check{Name: "cpu", Status: CheckWarning, Message: "could not read /proc/loadavg: " + err.Error()}
+		return Check{Name: "cpu", Status: CheckWarning, Message: err.Error()}
 	}
-	fields := strings.Fields(string(content))
-	if len(fields) == 0 {
-		return Check{Name: "cpu", Status: CheckWarning, Message: "could not parse /proc/loadavg"}
-	}
-	load, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil {
-		return Check{Name: "cpu", Status: CheckWarning, Message: "could not parse /proc/loadavg"}
-	}
-	cores := runtime.NumCPU()
-	if cores < 1 {
-		cores = 1
-	}
-	percent := load / float64(cores) * 100
 	status := CheckPass
 	if percent >= float64(options.CPUCriticalPercent) {
 		status = CheckCritical
 	} else if percent >= float64(options.CPUWarningPercent) {
 		status = CheckWarning
 	}
-	return Check{Name: "cpu", Status: status, Message: fmt.Sprintf("normalized 1-minute CPU load is %.1f%% (%d CPU(s))", percent, cores)}
+	return Check{Name: "cpu", Status: status, Message: fmt.Sprintf("normalized 1-minute CPU load is %.1f%% (%d CPU(s))", percent, runtime.NumCPU())}
 }
 
 func monitorMemory(paths Paths, options MonitorOptions) Check {
+	percent, err := readMemoryMetric(paths)
+	if err != nil {
+		return Check{Name: "memory", Status: CheckWarning, Message: err.Error()}
+	}
+	status := CheckPass
+	if percent >= float64(options.MemoryCriticalPercent) {
+		status = CheckCritical
+	} else if percent >= float64(options.MemoryWarningPercent) {
+		status = CheckWarning
+	}
+	return Check{Name: "memory", Status: status, Message: fmt.Sprintf("memory usage is %.1f%%", percent)}
+}
+
+func readCPUMetric(paths Paths) (float64, error) {
+	root := paths.Root
+	if root == "" {
+		root = string(filepath.Separator)
+	}
+	content, err := os.ReadFile(filepath.Join(root, "proc", "loadavg"))
+	if err != nil {
+		return 0, fmt.Errorf("could not read /proc/loadavg: %w", err)
+	}
+	fields := strings.Fields(string(content))
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("could not parse /proc/loadavg")
+	}
+	load, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return 0, fmt.Errorf("could not parse /proc/loadavg")
+	}
+	cores := runtime.NumCPU()
+	if cores < 1 {
+		cores = 1
+	}
+	return load / float64(cores) * 100, nil
+}
+
+func readMemoryMetric(paths Paths) (float64, error) {
 	root := paths.Root
 	if root == "" {
 		root = string(filepath.Separator)
 	}
 	content, err := os.ReadFile(filepath.Join(root, "proc", "meminfo"))
 	if err != nil {
-		return Check{Name: "memory", Status: CheckWarning, Message: "could not read /proc/meminfo: " + err.Error()}
+		return 0, fmt.Errorf("could not read /proc/meminfo: %w", err)
 	}
 	values := map[string]uint64{}
 	for _, line := range strings.Split(string(content), "\n") {
@@ -122,30 +164,27 @@ func monitorMemory(paths Paths, options MonitorOptions) Check {
 	total, totalOK := values["MemTotal"]
 	available, availableOK := values["MemAvailable"]
 	if !totalOK || !availableOK || total == 0 || available > total {
-		return Check{Name: "memory", Status: CheckWarning, Message: "could not parse /proc/meminfo"}
+		return 0, fmt.Errorf("could not parse /proc/meminfo")
 	}
-	percent := float64(total-available) / float64(total) * 100
-	status := CheckPass
-	if percent >= float64(options.MemoryCriticalPercent) {
-		status = CheckCritical
-	} else if percent >= float64(options.MemoryWarningPercent) {
-		status = CheckWarning
-	}
-	return Check{Name: "memory", Status: status, Message: fmt.Sprintf("memory usage is %.1f%%", percent)}
+	return float64(total-available) / float64(total) * 100, nil
 }
 
-func monitorDisk(ctx context.Context, runner Runner, path string, options MonitorOptions) Check {
+func readDiskMetric(ctx context.Context, runner Runner, path string) (int, error) {
 	if path == "" {
 		path = string(filepath.Separator)
 	}
 	if _, err := runner.LookPath("df"); err != nil {
-		return Check{Name: "disk", Status: CheckWarning, Message: "df is not available"}
+		return 0, fmt.Errorf("df is not available")
 	}
 	output, err := runner.Run(ctx, "df", "-P", path)
 	if err != nil {
-		return Check{Name: "disk", Status: CheckWarning, Message: err.Error()}
+		return 0, err
 	}
-	percentage, err := parseDFPercentage(output)
+	return parseDFPercentage(output)
+}
+
+func monitorDisk(ctx context.Context, runner Runner, path string, options MonitorOptions) Check {
+	percentage, err := readDiskMetric(ctx, runner, path)
 	if err != nil {
 		return Check{Name: "disk", Status: CheckWarning, Message: err.Error()}
 	}
@@ -156,6 +195,37 @@ func monitorDisk(ctx context.Context, runner Runner, path string, options Monito
 		status = CheckWarning
 	}
 	return Check{Name: "disk", Status: status, Message: fmt.Sprintf("disk usage is %d%%", percentage)}
+}
+
+func readContainerResourceMetrics(ctx context.Context, runner Runner) []ResourceMetric {
+	if _, err := runner.LookPath("docker"); err != nil {
+		return nil
+	}
+	output, err := runner.Run(ctx, "docker", "stats", "--no-stream", "--filter", "label=dev.omurga.managed=true", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}")
+	if err != nil {
+		return nil
+	}
+	metrics := make([]ResourceMetric, 0)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 || strings.TrimSpace(fields[0]) == "" {
+			continue
+		}
+		cpu, cpuErr := parseResourcePercentage(fields[1])
+		memory, memoryErr := parseResourcePercentage(fields[2])
+		if cpuErr == nil {
+			metrics = append(metrics, ResourceMetric{Name: "container." + strings.TrimSpace(fields[0]) + ".cpu", Value: cpu, Unit: "percent"})
+		}
+		if memoryErr == nil {
+			metrics = append(metrics, ResourceMetric{Name: "container." + strings.TrimSpace(fields[0]) + ".memory", Value: memory, Unit: "percent"})
+		}
+	}
+	return metrics
+}
+
+func parseResourcePercentage(value string) (float64, error) {
+	value = strings.TrimSpace(strings.TrimSuffix(value, "%"))
+	return strconv.ParseFloat(value, 64)
 }
 
 func monitorServices(ctx context.Context, runner Runner, services []string) Check {

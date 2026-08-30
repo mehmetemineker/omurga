@@ -377,8 +377,9 @@ sudo omurga alert test --channel all
 
 The host monitor checks CPU load, memory, disk and inode usage, failed systemd
 units, configured services, managed container health, and Caddy certificate
-expiry. It sends only new or changed issues and sends a recovery notification
-when an issue disappears.
+expiry. It also detects sustained resource spikes for the host and managed
+containers using a rolling baseline. It sends only new or changed issues and
+sends a recovery notification when an issue disappears.
 
 ```bash
 sudo omurga alert check
@@ -392,7 +393,7 @@ Thresholds and monitored services are configured under `monitor`:
 ```yaml
 monitor:
   enabled: true
-  schedule: '*/5 * * * *'
+  schedule: '*-*-* *:00/1:00'
   cpuWarningPercent: 80
   cpuCriticalPercent: 95
   memoryWarningPercent: 80
@@ -405,6 +406,19 @@ monitor:
     - caddy
   certificateRoots:
     - /var/lib/caddy/.local/share/caddy
+  spike:
+    enabled: true
+    baselineSamples: 3
+    consecutiveSamples: 2
+    cooldownMinutes: 30
+    cpuIncreasePercent: 30
+    memoryIncreasePercent: 20
+    diskIncreasePercent: 5
+    containerCPUIncreasePercent: 30
+    containerMemoryIncreasePercent: 20
+    cpuMinimumPercent: 70
+    memoryMinimumPercent: 70
+    diskMinimumPercent: 80
 ```
 
 ## Prometheus and Grafana monitoring

@@ -203,6 +203,40 @@ func TestMonitorReportsCPUAndMemoryThresholds(t *testing.T) {
 	}
 }
 
+func TestRunResourceMetricsIncludesHostAndManagedContainerValues(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	if err := os.MkdirAll(proc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	load := float64(runtime.NumCPU()) * 0.50
+	if err := os.WriteFile(filepath.Join(proc, "loadavg"), []byte(strconv.FormatFloat(load, 'f', 2, 64)+" 0.00 0.00 1/100 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(proc, "meminfo"), []byte("MemTotal:       1000 kB\nMemAvailable:    500 kB\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := healthyRunner()
+	runner.outputs[commandKey("docker", "stats", "--no-stream", "--filter", "label=dev.omurga.managed=true", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}")] = "omurga-demo-app-1\t82.5%\t74.0%"
+	metrics := RunResourceMetrics(context.Background(), DefaultPaths(root), runner)
+	values := make(map[string]float64, len(metrics))
+	for _, metric := range metrics {
+		values[metric.Name] = metric.Value
+	}
+	for name, expected := range map[string]float64{
+		"host.cpu":                           50,
+		"host.memory":                        50,
+		"host.disk":                          20,
+		"container.omurga-demo-app-1.cpu":    82.5,
+		"container.omurga-demo-app-1.memory": 74,
+	} {
+		if values[name] != expected {
+			t.Fatalf("metric %s = %v, want %v; all metrics: %#v", name, values[name], expected, values)
+		}
+	}
+}
+
 func TestMonitorReportsUnhealthyManagedContainer(t *testing.T) {
 	runner := healthyRunner()
 	runner.outputs[commandKey("docker", "ps", "-a", "--filter", "label=dev.omurga.managed=true", "--format", "{{.Names}}\t{{.Status}}")] = "omurga-demo-app-1\tExited (1) 2 minutes ago"

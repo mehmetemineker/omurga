@@ -276,8 +276,9 @@ sudo omurga alert schedule
 
 Configure CPU, memory, disk, certificate, and monitored-service thresholds in
 the `monitor` section of `/etc/omurga/alerts.yaml`. Managed container health is
-also checked. Repeated unchanged issues are suppressed and a recovery
-notification is sent when the issue is resolved.
+also checked. Resource spike detection compares CPU, memory, and disk usage with
+a rolling baseline, requires consecutive samples, suppresses repeated alerts,
+and sends a recovery notification when the issue is resolved.
 
 ## Documentation
 

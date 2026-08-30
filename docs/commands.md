@@ -553,6 +553,12 @@ sudo omurga alert schedule [--schedule <HH:MM-or-calendar>]
 sudo omurga alert unschedule
 ```
 
+The monitor also detects sustained CPU, memory, disk, and managed-container
+resource spikes. It uses a rolling baseline and stores samples in
+`/var/lib/omurga/alert-state.json`. Configure the behavior under
+`monitor.spike` in `/etc/omurga/alerts.yaml`; the default monitor schedule is
+every minute so short-lived increases can be observed.
+
 `alert check` updates the monitor state file and sends only state changes.
 `alert schedule` creates a systemd timer and requires `monitor.enabled: true`.
 
