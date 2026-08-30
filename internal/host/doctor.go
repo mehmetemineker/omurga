@@ -99,6 +99,7 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 		checkCommand(ctx, runner, &report, "package-manager", packageVersion.Name, packageVersion.Args, CheckWarning)
 		serviceVersion := provider.ServiceManager().VersionCommand()
 		checkCommand(ctx, runner, &report, "service-manager", serviceVersion.Name, serviceVersion.Args, CheckCritical)
+		checkUnattendedUpgrades(ctx, paths, runner, provider.ServiceManager(), &report)
 	}
 	checkCommand(ctx, runner, &report, "docker", "docker", []string{"info", "--format", "{{.ServerVersion}}"}, CheckCritical)
 	checkCommand(ctx, runner, &report, "docker-compose", "docker", []string{"compose", "version", "--short"}, CheckCritical)
@@ -150,6 +151,34 @@ func checkUFW(ctx context.Context, runner Runner, report *DoctorReport) {
 		return
 	}
 	addToReport(report, Check{Name: "ufw", Status: CheckPass, Message: firstLine(output)})
+}
+
+func checkUnattendedUpgrades(ctx context.Context, paths Paths, runner Runner, services ServiceManager, report *DoctorReport) {
+	if _, err := runner.LookPath("unattended-upgrade"); err != nil {
+		addToReport(report, Check{Name: "automatic-updates", Status: CheckWarning, Message: "unattended-upgrades is not installed"})
+		return
+	}
+	configured, err := unattendedUpgradesConfigured(paths)
+	if err != nil {
+		addToReport(report, Check{Name: "automatic-updates", Status: CheckWarning, Message: err.Error()})
+		return
+	}
+	if !configured {
+		addToReport(report, Check{Name: "automatic-updates", Status: CheckWarning, Message: "unattended-upgrades is installed but its Omurga policy is not configured"})
+		return
+	}
+	if services == nil {
+		addToReport(report, Check{Name: "automatic-updates", Status: CheckWarning, Message: "service manager is unavailable"})
+		return
+	}
+	for _, timer := range []string{"apt-daily.timer", "apt-daily-upgrade.timer"} {
+		command := services.IsActiveCommand(timer)
+		if !commandHealthy(ctx, runner, command.Name, command.Args...) {
+			addToReport(report, Check{Name: "automatic-updates", Status: CheckWarning, Message: timer + " is not active"})
+			return
+		}
+	}
+	addToReport(report, Check{Name: "automatic-updates", Status: CheckPass, Message: "daily security updates are enabled; automatic reboot is disabled"})
 }
 
 func checkCaddyServiceConfig(ctx context.Context, paths Paths, runner Runner, root bool, report *DoctorReport) {

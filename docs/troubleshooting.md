@@ -60,6 +60,23 @@ If an incorrect rule removed remote access, use the provider console or local
 terminal to fix the rule. Keep an existing SSH session open while changing
 firewall settings.
 
+## Automatic security updates are not running
+
+Inspect the Omurga health check, package logs, and APT timers:
+
+```bash
+sudo omurga doctor
+sudo systemctl status apt-daily.timer apt-daily-upgrade.timer
+sudo tail -n 50 /var/log/unattended-upgrades/unattended-upgrades.log
+```
+
+Repair the managed configuration if necessary:
+
+```bash
+sudo omurga --dry-run host install unattended-upgrades
+sudo omurga host install unattended-upgrades
+```
+
 ## Docker is missing or unhealthy
 
 ```bash

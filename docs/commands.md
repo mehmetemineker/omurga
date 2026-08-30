@@ -70,15 +70,17 @@ omurga host detect --json
 
 ### `omurga host init`
 
-Create managed directories and install Docker, Caddy, Restic, UFW, and Fail2ban.
-UFW allows SSH, HTTP, and HTTPS by default. The command is idempotent and safe
-to run again after an interrupted setup.
+Create managed directories and install Docker, Caddy, Restic, automatic
+security updates, UFW, and Fail2ban. UFW allows SSH, HTTP, and HTTPS by
+default. The command is idempotent and safe to run again after an interrupted
+setup.
 
 Options:
 
 - `--skip-docker` — do not install Docker.
 - `--skip-caddy` — do not install Caddy.
 - `--skip-restic` — do not install Restic.
+- `--skip-unattended-upgrades` — do not install or configure automatic security updates.
 - `--skip-ufw` — do not install or configure UFW.
 - `--skip-fail2ban` — do not install Fail2ban.
 - `--ssh-port <port>` — SSH TCP port to allow in UFW (default: `22`).
@@ -94,7 +96,7 @@ sudo omurga host init --replace-conflicting-docker
 ### `omurga host install <component>`
 
 Install or repair one component. `<component>` is `docker`, `caddy`, `restic`,
-`ufw`, `fail2ban`, or `all`.
+`unattended-upgrades`, `ufw`, `fail2ban`, or `all`.
 
 Docker installation also configures the default container log rotation policy:
 the `local` driver, `10m` maximum file size, and three rotated files.
@@ -104,11 +106,16 @@ Option:
 - `--replace-conflicting-docker` — allow replacement of conflicting Docker packages.
 - `--ssh-port <port>` — SSH TCP port to allow in UFW (default: `22`).
 
+`unattended-upgrades` enables daily APT package-list updates and automatic
+security upgrades, keeps automatic reboot disabled, and excludes Docker and
+Caddy from unattended package changes.
+
 ```bash
 sudo omurga --dry-run host install docker
 sudo omurga host install docker
 sudo omurga host install caddy
 sudo omurga host install restic
+sudo omurga host install unattended-upgrades
 sudo omurga host install ufw --ssh-port 22
 sudo omurga host install fail2ban
 sudo omurga host install all

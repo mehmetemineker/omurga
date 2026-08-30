@@ -218,6 +218,71 @@ func TestInstallResticIsNoOpWhenHealthy(t *testing.T) {
 	}
 }
 
+func TestInstallUnattendedUpgradesConfiguresDailySecurityUpdates(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	runner := &fakeRunner{outputs: map[string]string{}, errors: map[string]error{}}
+	installer := Installer{Paths: paths, Runner: runner, Downloader: fakeDownloader{}}
+
+	result, err := installer.InstallUnattendedUpgrades(context.Background(), supportedRelease(), InstallOptions{})
+	if err != nil {
+		t.Fatalf("InstallUnattendedUpgrades() error = %v", err)
+	}
+	if result.Component != "unattended-upgrades" || result.AlreadyInstalled {
+		t.Fatalf("unexpected install result: %#v", result)
+	}
+	periodic, err := os.ReadFile(paths.APTPeriodicConfig)
+	if err != nil || !strings.Contains(string(periodic), `APT::Periodic::Unattended-Upgrade "1";`) {
+		t.Fatalf("unexpected APT periodic configuration: %q, %v", periodic, err)
+	}
+	policy, err := os.ReadFile(paths.UnattendedUpgrades)
+	if err != nil || !strings.Contains(string(policy), `Unattended-Upgrade::Automatic-Reboot "false";`) || !strings.Contains(string(policy), `"docker-ce";`) {
+		t.Fatalf("unexpected unattended-upgrades policy: %q, %v", policy, err)
+	}
+	for _, command := range []string{
+		"apt-get install -y unattended-upgrades",
+		"systemctl enable --now apt-daily.timer",
+		"systemctl enable --now apt-daily-upgrade.timer",
+	} {
+		if !containsCommand(runner.calls, command) {
+			t.Fatalf("expected command %q, got %#v", command, runner.calls)
+		}
+	}
+}
+
+func TestInstallUnattendedUpgradesIsNoOpWhenHealthy(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(paths.APTPeriodicConfig), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.APTPeriodicConfig, []byte(aptPeriodicConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.UnattendedUpgrades, []byte(unattendedUpgradesConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{
+		available: map[string]bool{"unattended-upgrade": true, "systemctl": true},
+		outputs: map[string]string{
+			commandKey("dpkg-query", "-W", "-f=${Status}", "unattended-upgrades"):      "install ok installed",
+			commandKey("systemctl", "is-active", "--quiet", "apt-daily.timer"):         "",
+			commandKey("systemctl", "is-active", "--quiet", "apt-daily-upgrade.timer"): "",
+		},
+		errors: map[string]error{},
+	}
+	installer := Installer{Paths: paths, Runner: runner, Downloader: fakeDownloader{}}
+
+	result, err := installer.InstallUnattendedUpgrades(context.Background(), supportedRelease(), InstallOptions{})
+	if err != nil {
+		t.Fatalf("InstallUnattendedUpgrades() error = %v", err)
+	}
+	if !result.AlreadyInstalled {
+		t.Fatalf("expected a no-op installation result: %#v", result)
+	}
+	if containsCommand(runner.calls, "apt-get ") {
+		t.Fatalf("healthy unattended-upgrades installation executed APT: %#v", runner.calls)
+	}
+}
+
 func TestInstallFail2banConfiguresSSHJail(t *testing.T) {
 	paths := DefaultPaths(t.TempDir())
 	runner := &fakeRunner{outputs: map[string]string{}, errors: map[string]error{}}

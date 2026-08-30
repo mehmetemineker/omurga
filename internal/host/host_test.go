@@ -215,26 +215,29 @@ func TestMonitorReportsUnhealthyManagedContainer(t *testing.T) {
 func healthyRunner() *fakeRunner {
 	return &fakeRunner{
 		available: map[string]bool{
-			"apt-get":         true,
-			"docker":          true,
-			"caddy":           true,
-			"ufw":             true,
-			"fail2ban-client": true,
-			"df":              true,
-			"runuser":         true,
-			"systemctl":       true,
+			"apt-get":            true,
+			"docker":             true,
+			"caddy":              true,
+			"ufw":                true,
+			"unattended-upgrade": true,
+			"fail2ban-client":    true,
+			"df":                 true,
+			"runuser":            true,
+			"systemctl":          true,
 		},
 		outputs: map[string]string{
-			commandKey("id", "-u"):                                         "0",
-			commandKey("apt-get", "--version"):                             "apt 2.4.14",
-			commandKey("docker", "info", "--format", "{{.ServerVersion}}"): "27.5.1",
-			commandKey("docker", "compose", "version", "--short"):          "2.32.4",
-			commandKey("caddy", "version"):                                 "v2.9.1",
-			commandKey("ufw", "status", "verbose"):                         "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\n22/tcp ALLOW IN Anywhere\n80/tcp ALLOW IN Anywhere\n443/tcp ALLOW IN Anywhere",
-			commandKey("fail2ban-client", "status", "sshd"):                "Status for the jail: sshd",
-			commandKey("systemctl", "is-active", "--quiet", "docker"):      "",
-			commandKey("systemctl", "is-active", "--quiet", "caddy"):       "",
-			commandKey("systemctl", "is-active", "--quiet", "fail2ban"):    "",
+			commandKey("id", "-u"):                                                     "0",
+			commandKey("apt-get", "--version"):                                         "apt 2.4.14",
+			commandKey("docker", "info", "--format", "{{.ServerVersion}}"):             "27.5.1",
+			commandKey("docker", "compose", "version", "--short"):                      "2.32.4",
+			commandKey("caddy", "version"):                                             "v2.9.1",
+			commandKey("ufw", "status", "verbose"):                                     "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\n22/tcp ALLOW IN Anywhere\n80/tcp ALLOW IN Anywhere\n443/tcp ALLOW IN Anywhere",
+			commandKey("systemctl", "is-active", "--quiet", "apt-daily.timer"):         "",
+			commandKey("systemctl", "is-active", "--quiet", "apt-daily-upgrade.timer"): "",
+			commandKey("fail2ban-client", "status", "sshd"):                            "Status for the jail: sshd",
+			commandKey("systemctl", "is-active", "--quiet", "docker"):                  "",
+			commandKey("systemctl", "is-active", "--quiet", "caddy"):                   "",
+			commandKey("systemctl", "is-active", "--quiet", "fail2ban"):                "",
 		},
 		errors: map[string]error{},
 	}
@@ -254,6 +257,15 @@ func createInitializedPaths(t *testing.T) Paths {
 		if err := os.MkdirAll(directory.Path, directory.Mode); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := os.MkdirAll(filepath.Dir(paths.APTPeriodicConfig), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.APTPeriodicConfig, []byte(aptPeriodicConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.UnattendedUpgrades, []byte(unattendedUpgradesConfig), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	return paths
 }

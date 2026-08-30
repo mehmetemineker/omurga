@@ -18,6 +18,7 @@ repeatable operations.
 - The application is distributed as a single Go binary.
 - Docker Engine and Docker Compose provide the container runtime.
 - Docker uses the `local` log driver with Omurga-managed size and file-count rotation defaults.
+- Daily security updates use `unattended-upgrades`; automatic reboot is disabled and runtime-service packages are excluded.
 - The current Ubuntu and Debian providers run Caddy as a systemd service.
 - Projects are defined by a `version: 1` YAML manifest.
 - Operational state is stored in SQLite; the manifest is the source of truth.

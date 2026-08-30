@@ -63,6 +63,33 @@ The `local` driver keeps `docker logs` available. Applications that write log
 files inside volumes or bind mounts need a separate application policy or
 `logrotate` configuration.
 
+## Automatic security updates
+
+Install daily unattended security updates while keeping Docker and Caddy
+updates under Omurga control:
+
+```bash
+sudo omurga --dry-run host install unattended-upgrades
+sudo omurga host install unattended-upgrades
+```
+
+The configuration uses the distribution’s allowed APT origins, enables daily
+package-list and upgrade timers, removes unused dependencies, and disables
+automatic reboot. Docker, containerd, Docker plugins, and Caddy are excluded
+from unattended changes so service updates can be tested and applied with
+Omurga.
+
+Check the configuration and timers:
+
+```bash
+sudo omurga doctor
+sudo systemctl status apt-daily.timer apt-daily-upgrade.timer
+sudo tail -n 50 /var/log/unattended-upgrades/unattended-upgrades.log
+```
+
+Omurga reports a pending reboot through `doctor`; reboot deliberately after
+checking active services and deployment state.
+
 ## UFW firewall
 
 Install or repair the host firewall with Omurga. Preview the commands before

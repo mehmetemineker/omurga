@@ -2,7 +2,7 @@
 
 Omurga is a declarative CLI for provisioning supported Linux hosts, running Docker
 Compose projects, configuring a Caddy gateway, and operating PostgreSQL, Redis,
-UFW, Fail2ban, backups, secrets, alerts, registries, shared services, and remote hosts.
+automatic security updates, UFW, Fail2ban, backups, secrets, alerts, registries, shared services, and remote hosts.
 
 The v1 command surface is implemented. Official host support covers Ubuntu
 22.04, 24.04, and 26.04 plus Debian 11, 12, and 13. Host-changing commands
@@ -168,6 +168,7 @@ sudo omurga host init
 sudo omurga host update
 sudo omurga host install all
 sudo omurga host install ufw --ssh-port 22
+sudo omurga host install unattended-upgrades
 sudo omurga host install restic
 omurga doctor
 ```

@@ -33,6 +33,7 @@ func newHostInitCommand(opts *options) *cobra.Command {
 	var skipDocker bool
 	var skipCaddy bool
 	var skipRestic bool
+	var skipUnattendedUpgrades bool
 	var skipUFW bool
 	var skipFail2ban bool
 	var replaceDockerConflicts bool
@@ -40,7 +41,7 @@ func newHostInitCommand(opts *options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize Omurga and install Docker, Caddy, Restic, UFW, and Fail2ban on a supported Linux host",
+		Short: "Initialize Omurga and install Docker, Caddy, Restic, security updates, UFW, and Fail2ban on a supported Linux host",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireLocalHost(opts.host); err != nil {
@@ -67,7 +68,7 @@ func newHostInitCommand(opts *options) *cobra.Command {
 				DryRun:                 opts.dryRun,
 				ReplaceDockerConflicts: replaceDockerConflicts,
 				UFWSSHPort:             sshPort,
-			}, !skipDocker, !skipCaddy, !skipRestic, !skipUFW, !skipFail2ban, progress.FromContext(cmd.Context()))
+			}, !skipDocker, !skipCaddy, !skipRestic, !skipUnattendedUpgrades, !skipUFW, !skipFail2ban, progress.FromContext(cmd.Context()))
 			if err != nil {
 				return err
 			}
@@ -77,6 +78,7 @@ func newHostInitCommand(opts *options) *cobra.Command {
 	cmd.Flags().BoolVar(&skipDocker, "skip-docker", false, "do not install Docker")
 	cmd.Flags().BoolVar(&skipCaddy, "skip-caddy", false, "do not install Caddy")
 	cmd.Flags().BoolVar(&skipRestic, "skip-restic", false, "do not install Restic")
+	cmd.Flags().BoolVar(&skipUnattendedUpgrades, "skip-unattended-upgrades", false, "do not install or configure automatic security updates")
 	cmd.Flags().BoolVar(&skipUFW, "skip-ufw", false, "do not install or configure UFW")
 	cmd.Flags().BoolVar(&skipFail2ban, "skip-fail2ban", false, "do not install Fail2ban")
 	cmd.Flags().IntVar(&sshPort, "ssh-port", 22, "SSH TCP port to allow in UFW")
@@ -88,17 +90,17 @@ func newHostInstallCommand(opts *options) *cobra.Command {
 	var replaceDockerConflicts bool
 	var sshPort int
 	cmd := &cobra.Command{
-		Use:       "install [docker|caddy|restic|ufw|fail2ban|all]",
+		Use:       "install [docker|caddy|restic|unattended-upgrades|ufw|fail2ban|all]",
 		Short:     "Install or repair host infrastructure components",
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"docker", "caddy", "restic", "ufw", "fail2ban", "all"},
+		ValidArgs: []string{"docker", "caddy", "restic", "unattended-upgrades", "ufw", "fail2ban", "all"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireLocalHost(opts.host); err != nil {
 				return err
 			}
 			component := args[0]
-			if component != "docker" && component != "caddy" && component != "restic" && component != "ufw" && component != "fail2ban" && component != "all" {
-				return fmt.Errorf("component must be docker, caddy, restic, ufw, fail2ban, or all")
+			if component != "docker" && component != "caddy" && component != "restic" && component != "unattended-upgrades" && component != "ufw" && component != "fail2ban" && component != "all" {
+				return fmt.Errorf("component must be docker, caddy, unattended-upgrades, ufw, fail2ban, or all")
 			}
 
 			paths := host.DefaultPaths("/")
@@ -120,7 +122,7 @@ func newHostInstallCommand(opts *options) *cobra.Command {
 				DryRun:                 opts.dryRun,
 				ReplaceDockerConflicts: replaceDockerConflicts,
 				UFWSSHPort:             sshPort,
-			}, component == "docker" || component == "all", component == "caddy" || component == "all", component == "restic" || component == "all", component == "ufw" || component == "all", component == "fail2ban" || component == "all", progress.FromContext(cmd.Context()))
+			}, component == "docker" || component == "all", component == "caddy" || component == "all", component == "restic" || component == "all", component == "unattended-upgrades" || component == "all", component == "ufw" || component == "all", component == "fail2ban" || component == "all", progress.FromContext(cmd.Context()))
 			if err != nil {
 				return err
 			}
@@ -292,7 +294,7 @@ func writeInstallResults(writer io.Writer, results []host.InstallResult, opts *o
 	return nil
 }
 
-func runHostInstallers(ctx context.Context, paths host.Paths, release host.OSRelease, options host.InstallOptions, installDocker, installCaddy, installRestic, installUFW, installFail2ban bool, reporter *progress.Reporter) ([]host.InstallResult, error) {
+func runHostInstallers(ctx context.Context, paths host.Paths, release host.OSRelease, options host.InstallOptions, installDocker, installCaddy, installRestic, installUnattendedUpgrades, installUFW, installFail2ban bool, reporter *progress.Reporter) ([]host.InstallResult, error) {
 	installer := host.NewInstaller(paths).WithProgress(reporter)
 	results := make([]host.InstallResult, 0, 5)
 	if installDocker {
@@ -313,6 +315,13 @@ func runHostInstallers(ctx context.Context, paths host.Paths, release host.OSRel
 		result, err := installer.InstallRestic(ctx, release, options)
 		if err != nil {
 			return results, fmt.Errorf("Restic installation failed: %w", err)
+		}
+		results = append(results, result)
+	}
+	if installUnattendedUpgrades {
+		result, err := installer.InstallUnattendedUpgrades(ctx, release, options)
+		if err != nil {
+			return results, fmt.Errorf("automatic security updates installation failed: %w", err)
 		}
 		results = append(results, result)
 	}

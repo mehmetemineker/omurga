@@ -40,6 +40,8 @@ type Paths struct {
 	CaddyFile          string
 	CaddyDataRoot      string
 	DockerDaemonConfig string
+	APTPeriodicConfig  string
+	UnattendedUpgrades string
 	Fail2banJail       string
 }
 
@@ -91,6 +93,8 @@ func DefaultPaths(root string) Paths {
 		CaddyFile:          join("etc/caddy/Caddyfile"),
 		CaddyDataRoot:      join("var/lib/caddy/.local/share/caddy"),
 		DockerDaemonConfig: join("etc/docker/daemon.json"),
+		APTPeriodicConfig:  join("etc/apt/apt.conf.d/20auto-upgrades"),
+		UnattendedUpgrades: join("etc/apt/apt.conf.d/52unattended-upgrades-local"),
 		Fail2banJail:       join("etc/fail2ban/jail.d/omurga-sshd.conf"),
 	}
 }
