@@ -103,11 +103,14 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 	checkCommand(ctx, runner, &report, "docker", "docker", []string{"info", "--format", "{{.ServerVersion}}"}, CheckCritical)
 	checkCommand(ctx, runner, &report, "docker-compose", "docker", []string{"compose", "version", "--short"}, CheckCritical)
 	checkCommand(ctx, runner, &report, "caddy", "caddy", []string{"version"}, CheckCritical)
+	checkCommand(ctx, runner, &report, "fail2ban", "fail2ban-client", []string{"status", "sshd"}, CheckWarning)
 	if provider != nil {
 		dockerService := provider.ServiceManager().IsActiveCommand("docker")
 		checkCommand(ctx, runner, &report, "docker-service", dockerService.Name, dockerService.Args, CheckCritical)
 		caddyService := provider.ServiceManager().IsActiveCommand("caddy")
 		checkCommand(ctx, runner, &report, "caddy-service", caddyService.Name, caddyService.Args, CheckCritical)
+		fail2banService := provider.ServiceManager().IsActiveCommand("fail2ban")
+		checkCommand(ctx, runner, &report, "fail2ban-service", fail2banService.Name, fail2banService.Args, CheckWarning)
 	}
 	checkCommand(ctx, runner, &report, "caddy-config", "caddy", []string{"validate", "--config", paths.CaddyFile, "--adapter", "caddyfile"}, CheckCritical)
 	checkCaddyServiceConfig(ctx, paths, runner, root, &report)

@@ -38,6 +38,29 @@ sudo omurga doctor --json
 The `host status` and `host doctor` commands are aliases for the same health
 check behavior in the current CLI.
 
+## Fail2ban
+
+Install or repair Fail2ban with Omurga:
+
+```bash
+sudo omurga --dry-run host install fail2ban
+sudo omurga host install fail2ban
+```
+
+The installer writes `/etc/fail2ban/jail.d/omurga-sshd.conf`, enables the
+Fail2ban systemd service, and activates a conservative SSH jail. It allows
+five failed attempts within ten minutes and bans the source for one hour.
+The jail uses the systemd journal backend and is intentionally limited to SSH;
+application-specific jails can be added separately under `jail.d`.
+
+Verify the service and jail:
+
+```bash
+sudo systemctl status fail2ban
+sudo fail2ban-client status
+sudo fail2ban-client status sshd
+```
+
 ## PostgreSQL operations
 
 For a project-scoped PostgreSQL dependency, Omurga can show status, list

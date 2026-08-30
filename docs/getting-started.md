@@ -69,7 +69,7 @@ sudo omurga --dry-run host init
 ```
 
 Apply initialization. This creates Omurga directories and installs Docker,
-Caddy, and Restic:
+Caddy, Restic, and Fail2ban with an SSH jail:
 
 ```bash
 sudo omurga host init
@@ -84,6 +84,7 @@ sudo omurga host init --skip-restic
 sudo omurga host install docker
 sudo omurga host install caddy
 sudo omurga host install restic
+sudo omurga host install fail2ban
 ```
 
 If a distribution Docker package conflicts with Docker CE, explicitly allow

@@ -200,6 +200,58 @@ func TestInstallResticIsNoOpWhenHealthy(t *testing.T) {
 	}
 }
 
+func TestInstallFail2banConfiguresSSHJail(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	runner := &fakeRunner{outputs: map[string]string{}, errors: map[string]error{}}
+	installer := Installer{Paths: paths, Runner: runner, Downloader: fakeDownloader{}}
+
+	result, err := installer.InstallFail2ban(context.Background(), supportedRelease(), InstallOptions{})
+	if err != nil {
+		t.Fatalf("InstallFail2ban() error = %v", err)
+	}
+	if result.Component != "fail2ban" || result.AlreadyInstalled {
+		t.Fatalf("unexpected install result: %#v", result)
+	}
+	content, err := os.ReadFile(paths.Fail2banJail)
+	if err != nil || !strings.Contains(string(content), "[sshd]") || !strings.Contains(string(content), "backend = systemd") {
+		t.Fatalf("unexpected Fail2ban jail: %q, %v", content, err)
+	}
+	if !containsCommand(runner.calls, "apt-get install -y fail2ban") || !containsCommand(runner.calls, "systemctl enable --now fail2ban") {
+		t.Fatalf("unexpected Fail2ban installation commands: %#v", runner.calls)
+	}
+}
+
+func TestInstallFail2banIsNoOpWhenHealthy(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(paths.Fail2banJail), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.Fail2banJail, []byte(fail2banSSHJail), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{
+		available: map[string]bool{"fail2ban-client": true, "systemctl": true},
+		outputs: map[string]string{
+			commandKey("dpkg-query", "-W", "-f=${Status}", "fail2ban"):  "install ok installed",
+			commandKey("systemctl", "is-active", "--quiet", "fail2ban"): "",
+			commandKey("fail2ban-client", "status", "sshd"):             "Status for the jail: sshd",
+		},
+		errors: map[string]error{},
+	}
+	installer := Installer{Paths: paths, Runner: runner, Downloader: fakeDownloader{}}
+
+	result, err := installer.InstallFail2ban(context.Background(), supportedRelease(), InstallOptions{})
+	if err != nil {
+		t.Fatalf("InstallFail2ban() error = %v", err)
+	}
+	if !result.AlreadyInstalled {
+		t.Fatalf("expected a no-op installation result: %#v", result)
+	}
+	if containsCommand(runner.calls, "apt-get ") {
+		t.Fatalf("healthy Fail2ban installation executed APT: %#v", runner.calls)
+	}
+}
+
 func containsCommand(calls []string, prefix string) bool {
 	for _, call := range calls {
 		if strings.HasPrefix(call, prefix) {

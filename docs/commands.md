@@ -70,7 +70,7 @@ omurga host detect --json
 
 ### `omurga host init`
 
-Create managed directories and install Docker, Caddy, and Restic. It is
+Create managed directories and install Docker, Caddy, Restic, and Fail2ban. It is
 idempotent and safe to run again after an interrupted setup.
 
 Options:
@@ -78,6 +78,7 @@ Options:
 - `--skip-docker` — do not install Docker.
 - `--skip-caddy` — do not install Caddy.
 - `--skip-restic` — do not install Restic.
+- `--skip-fail2ban` — do not install Fail2ban.
 - `--replace-conflicting-docker` — remove conflicting distribution Docker packages before installing Docker CE.
 
 ```bash
@@ -90,7 +91,7 @@ sudo omurga host init --replace-conflicting-docker
 ### `omurga host install <component>`
 
 Install or repair one component. `<component>` is `docker`, `caddy`, `restic`,
-or `all`.
+`fail2ban`, or `all`.
 
 Option:
 
@@ -101,6 +102,7 @@ sudo omurga --dry-run host install docker
 sudo omurga host install docker
 sudo omurga host install caddy
 sudo omurga host install restic
+sudo omurga host install fail2ban
 sudo omurga host install all
 ```
 

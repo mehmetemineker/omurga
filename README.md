@@ -2,7 +2,7 @@
 
 Omurga is a declarative CLI for provisioning supported Linux hosts, running Docker
 Compose projects, configuring a Caddy gateway, and operating PostgreSQL, Redis,
-backups, secrets, alerts, registries, shared services, and remote hosts.
+Fail2ban, backups, secrets, alerts, registries, shared services, and remote hosts.
 
 The v1 command surface is implemented. Official host support covers Ubuntu
 22.04, 24.04, and 26.04 plus Debian 11, 12, and 13. Host-changing commands

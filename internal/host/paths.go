@@ -39,6 +39,7 @@ type Paths struct {
 	CaddySource        string
 	CaddyFile          string
 	CaddyDataRoot      string
+	Fail2banJail       string
 }
 
 type Directory struct {
@@ -88,6 +89,7 @@ func DefaultPaths(root string) Paths {
 		CaddySource:        join("etc/apt/sources.list.d/caddy-stable.list"),
 		CaddyFile:          join("etc/caddy/Caddyfile"),
 		CaddyDataRoot:      join("var/lib/caddy/.local/share/caddy"),
+		Fail2banJail:       join("etc/fail2ban/jail.d/omurga-sshd.conf"),
 	}
 }
 

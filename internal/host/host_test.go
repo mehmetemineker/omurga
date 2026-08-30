@@ -198,12 +198,13 @@ func TestMonitorReportsUnhealthyManagedContainer(t *testing.T) {
 func healthyRunner() *fakeRunner {
 	return &fakeRunner{
 		available: map[string]bool{
-			"apt-get":   true,
-			"docker":    true,
-			"caddy":     true,
-			"df":        true,
-			"runuser":   true,
-			"systemctl": true,
+			"apt-get":         true,
+			"docker":          true,
+			"caddy":           true,
+			"fail2ban-client": true,
+			"df":              true,
+			"runuser":         true,
+			"systemctl":       true,
 		},
 		outputs: map[string]string{
 			commandKey("id", "-u"):                                         "0",
@@ -211,8 +212,10 @@ func healthyRunner() *fakeRunner {
 			commandKey("docker", "info", "--format", "{{.ServerVersion}}"): "27.5.1",
 			commandKey("docker", "compose", "version", "--short"):          "2.32.4",
 			commandKey("caddy", "version"):                                 "v2.9.1",
+			commandKey("fail2ban-client", "status", "sshd"):                "Status for the jail: sshd",
 			commandKey("systemctl", "is-active", "--quiet", "docker"):      "",
 			commandKey("systemctl", "is-active", "--quiet", "caddy"):       "",
+			commandKey("systemctl", "is-active", "--quiet", "fail2ban"):    "",
 		},
 		errors: map[string]error{},
 	}
