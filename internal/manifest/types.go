@@ -59,6 +59,7 @@ type Healthcheck struct {
 }
 
 type Gateway struct {
+	Email  string  `yaml:"email,omitempty" json:"email,omitempty"`
 	Routes []Route `yaml:"routes,omitempty" json:"routes,omitempty"`
 }
 

@@ -31,6 +31,22 @@ Every gateway route references a declared service and one of its exposed ports.
 The generated Compose port uses long syntax with `host_ip: 127.0.0.1`. Caddy
 proxies the public domain to that loopback port. A route with `https: false`
 uses an explicit `http://` Caddy site address; HTTPS is otherwise the default.
+For HTTPS routes, Caddy obtains and renews publicly trusted certificates
+automatically when the domain is publicly resolvable and ports 80 and 443 reach
+the host. Set `gateway.email` to identify the ACME account:
+
+```yaml
+gateway:
+  email: ops@example.com
+  routes:
+    - domain: app.example.com
+      service: app
+      port: 80
+      https: true
+```
+
+Local names such as `.localhost`, `.local`, and `.internal` do not qualify for
+public certificates. Use `https: false` for local HTTP-only testing.
 
 Preview ports are deterministic values in the `20000-29999` range. Preview
 ports are intended for rendering only and do not create operational state.

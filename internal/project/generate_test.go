@@ -81,3 +81,26 @@ func TestGenerateRejectsSharedDependency(t *testing.T) {
 		t.Fatalf("expected shared dependency error, got: %v", err)
 	}
 }
+
+func TestGenerateAddsACMEEmailForHTTPSRoute(t *testing.T) {
+	project := manifest.Project{
+		Version: 1,
+		Name:    "demo",
+		Gateway: manifest.Gateway{
+			Email:  "ops@example.com",
+			Routes: []manifest.Route{{Domain: "demo.example.com", Service: "app", Port: 80, HTTPS: boolPointer(true)}},
+		},
+		Services: map[string]manifest.Service{
+			"app": {Image: "nginx:alpine", Expose: []int{80}},
+		},
+	}
+	artifacts, err := Generate(project, DefaultRenderOptions(project, "production"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(artifacts.Caddy), "tls ops@example.com") {
+		t.Fatalf("expected ACME email in generated Caddy config:\n%s", artifacts.Caddy)
+	}
+}
+
+func boolPointer(value bool) *bool { return &value }

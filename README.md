@@ -112,6 +112,24 @@ Gateway ports bind only to `127.0.0.1`; Caddy is the public entry point.
 Persistent data is preserved during deletion unless both `--purge-data` and
 `--yes` are supplied.
 
+HTTPS routes use Caddy automatic HTTPS and Let’s Encrypt-compatible ACME
+certificate management. Point the domain DNS record to the host, allow inbound
+TCP ports 80 and 443, and set the ACME account email in the manifest:
+
+```yaml
+gateway:
+  email: ops@example.com
+  routes:
+    - domain: app.example.com
+      service: app
+      port: 80
+      https: true
+```
+
+The certificate is requested during Caddy reload and renewed automatically.
+Local domains such as `demo.localhost` cannot receive publicly trusted
+certificates; keep those routes on HTTP with `https: false`.
+
 Environment overlays are regular YAML files under `environments/`. Non-secret
 service values can also be edited through the CLI:
 

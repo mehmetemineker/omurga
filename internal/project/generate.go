@@ -286,6 +286,11 @@ func renderCaddy(project manifest.Project, options RenderOptions) ([]byte, error
 			address = "http://" + address
 		}
 		fmt.Fprintf(&builder, "%s {\n", address)
+		if route.HTTPS == nil || *route.HTTPS {
+			if project.Gateway.Email != "" {
+				fmt.Fprintf(&builder, "    tls %s\n", project.Gateway.Email)
+			}
+		}
 		builder.WriteString("    encode zstd gzip\n")
 		fmt.Fprintf(&builder, "    reverse_proxy 127.0.0.1:%d\n", hostPort)
 		builder.WriteString("}\n\n")

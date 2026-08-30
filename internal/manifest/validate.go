@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"fmt"
+	"net/mail"
 	"regexp"
 	"sort"
 	"strconv"
@@ -41,6 +42,12 @@ func Validate(project Project) error {
 	}
 	if len(project.Services) == 0 {
 		add("services", "at least one service must be defined")
+	}
+	if project.Gateway.Email != "" {
+		parsed, err := mail.ParseAddress(project.Gateway.Email)
+		if err != nil || parsed.Address != project.Gateway.Email {
+			add("gateway.email", "must be a valid email address")
+		}
 	}
 
 	serviceNames := sortedKeys(project.Services)
