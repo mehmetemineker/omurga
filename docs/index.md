@@ -73,7 +73,7 @@ purge flag.
 - [Deploy a project end to end](deploy-a-project.md) — one complete Linux-to-production deployment walkthrough.
 - [Projects and environments](projects.md) — manifests, overlays, secrets, deployment, Caddy, PostgreSQL, and Redis.
 - [Operations](operations.md) — backups, alerts, monitoring, registries, shared services, and remote hosts.
-- [Command reference](commands.md) — every command, argument, option, and common flag.
+- [Command guide](commands.md) — commands grouped by task, with a separate page and scenario for each command.
 - [Troubleshooting](troubleshooting.md) — diagnostics for Docker, Caddy, deployments, backups, and alerts.
 
 The versioned technical notes remain available for implementation details:
