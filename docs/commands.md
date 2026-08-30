@@ -36,6 +36,48 @@ sudo omurga --quiet doctor
 `--json`, `--quiet`, and `--dry-run` disable progress output automatically.
 This keeps command output safe for scripts and CI logs.
 
+## Webhook commands
+
+### `omurga webhook add <name>`
+
+Create a webhook bound to one project, environment, and service. Omurga
+generates a 32-byte signing secret, stores it in a root-only file, and prints
+the secret once so it can be saved as a CI secret.
+
+```bash
+sudo omurga webhook add demo-production \
+  --project demo \
+  --environment production \
+  --service app \
+  --manifest /opt/omurga/projects/demo/omurga.yaml \
+  --image-prefix ghcr.io/acme/demo
+```
+
+The webhook accepts only the configured target and image repository. The
+request must contain an image digest; mutable tags alone are rejected.
+
+### `omurga webhook list`
+
+List configured webhook targets without exposing signing secrets:
+
+```bash
+sudo omurga webhook list
+sudo omurga webhook list --json
+```
+
+### `omurga webhook serve`
+
+Run the local HTTP endpoint. It listens on loopback by default:
+
+```bash
+sudo omurga webhook serve
+sudo omurga webhook serve --listen 127.0.0.1:8090
+```
+
+The endpoint for the example above is `/webhooks/demo-production`. Put it
+behind Caddy or another TLS-terminating reverse proxy before exposing it to a
+CI provider.
+
 ## Top-level commands
 
 ### `omurga version`

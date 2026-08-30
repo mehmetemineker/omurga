@@ -75,6 +75,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newRegistryCommand(opts))
 	cmd.AddCommand(newAlertCommand(opts))
 	cmd.AddCommand(newMonitoringCommand(opts))
+	cmd.AddCommand(newWebhookCommand(opts))
 
 	return cmd
 }

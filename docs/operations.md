@@ -38,6 +38,104 @@ sudo omurga doctor --json
 The `host status` and `host doctor` commands are aliases for the same health
 check behavior in the current CLI.
 
+## Image deployment webhooks
+
+Omurga webhooks deploy images only after a CI pipeline has built and pushed
+them. Configure a target and generate its signing secret:
+
+```bash
+sudo omurga webhook add demo-production \
+  --project demo \
+  --environment production \
+  --service app \
+  --manifest /opt/omurga/projects/demo/omurga.yaml \
+  --image-prefix ghcr.io/acme/demo
+```
+
+Store the printed secret in the CI provider, then run the webhook listener on
+loopback:
+
+```bash
+sudo omurga webhook serve --listen 127.0.0.1:8090
+```
+
+For a persistent installation, run the listener under systemd:
+
+```ini
+# /etc/systemd/system/omurga-webhook.service
+[Unit]
+Description=Omurga image deployment webhook
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/omurga webhook serve --listen 127.0.0.1:8090
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable it with:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now omurga-webhook
+```
+
+Expose the loopback listener through a Caddy HTTPS site:
+
+```caddyfile
+deploy.example.com {
+    reverse_proxy 127.0.0.1:8090
+}
+```
+
+The CI job must send `POST /webhooks/demo-production` with these headers:
+
+- `X-Omurga-Event: image.published`
+- `X-Omurga-Delivery: <unique-delivery-id>`
+- `X-Omurga-Timestamp: <unix-seconds>`
+- `X-Omurga-Signature-256: sha256=<HMAC-SHA256>`
+
+The signature covers `<timestamp>.<raw-request-body>` and uses the webhook
+secret. The JSON body must identify the configured target and include an
+immutable digest:
+
+```json
+{
+  "project": "demo",
+  "environment": "production",
+  "service": "app",
+  "image": "ghcr.io/acme/demo:build-42",
+  "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}
+```
+
+A GitHub Actions shell step can create the signature after the image push:
+
+```bash
+timestamp="$(date +%s)"
+payload='{"project":"demo","environment":"production","service":"app","image":"ghcr.io/acme/demo:build-42","digest":"sha256:..."}'
+signature="$(printf '%s.%s' "$timestamp" "$payload" | openssl dgst -sha256 -hmac "$OMURGA_WEBHOOK_SECRET" -binary | xxd -p -c 256)"
+curl --fail-with-body -X POST "https://deploy.example.com/webhooks/demo-production" \
+  -H 'Content-Type: application/json' \
+  -H 'X-Omurga-Event: image.published' \
+  -H "X-Omurga-Delivery: ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+  -H "X-Omurga-Timestamp: $timestamp" \
+  -H "X-Omurga-Signature-256: sha256=$signature" \
+  --data-binary "$payload"
+```
+
+The listener rejects stale timestamps, duplicate delivery IDs, invalid HMAC
+signatures, unknown payload fields, images outside the configured repository,
+and non-SHA256 digests. Accepted deliveries are serialized per listener and
+recorded under `/var/lib/omurga/webhooks/replay.json`. The existing deployment
+health checks and rollback behavior remain in effect.
+
 ## Docker log rotation
 
 Docker installation configures `/etc/docker/daemon.json` with the `local` log

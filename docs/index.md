@@ -22,6 +22,7 @@ description: The practical guide to provisioning Linux hosts and operating Docke
 <div class="cards">
 <div class="card"><h3>Hosts</h3><p>Detect Debian or Ubuntu, install Docker, Caddy, Restic, automatic security updates, UFW, and Fail2ban, update packages, and run health checks.</p></div>
 <div class="card"><h3>Projects</h3><p>Define services in YAML, merge environments, deploy safely, configure gateways, and roll back.</p></div>
+<div class="card"><h3>CI/CD webhooks</h3><p>Deploy successfully pushed image digests through signed, replay-protected webhook callbacks.</p></div>
 <div class="card"><h3>Operations</h3><p>Back up data, send Telegram or email alerts, manage registries, and inspect Prometheus metrics in Grafana.</p></div>
 </div>
 

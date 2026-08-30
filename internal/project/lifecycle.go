@@ -240,6 +240,26 @@ func (l Lifecycle) Deploy(ctx context.Context, loaded manifest.LoadedProject, dr
 	return result, nil
 }
 
+// DeployImage deploys a single service with an immutable image reference
+// without modifying the project manifest on disk.
+func (l Lifecycle) DeployImage(ctx context.Context, loaded manifest.LoadedProject, service, image string, dryRun bool) (DeployResult, error) {
+	definition, exists := loaded.Project.Services[service]
+	if !exists {
+		return DeployResult{}, fmt.Errorf("service %q is not defined in project %q", service, loaded.Project.Name)
+	}
+	if strings.TrimSpace(image) == "" {
+		return DeployResult{}, fmt.Errorf("image is required")
+	}
+	services := make(map[string]manifest.Service, len(loaded.Project.Services))
+	for name, current := range loaded.Project.Services {
+		services[name] = current
+	}
+	definition.Image = image
+	services[service] = definition
+	loaded.Project.Services = services
+	return l.Deploy(ctx, loaded, dryRun)
+}
+
 func (l Lifecycle) Status(ctx context.Context, loaded manifest.LoadedProject) (StatusResult, error) {
 	result := StatusResult{Project: loaded.Project.Name, Environment: gateway.EnvironmentKey(loaded.Environment)}
 	if _, err := os.Stat(l.Paths.StateDB); os.IsNotExist(err) {

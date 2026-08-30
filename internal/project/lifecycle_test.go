@@ -85,6 +85,20 @@ func TestDeployDryRunDoesNotMutateFilesystemOrState(t *testing.T) {
 	}
 }
 
+func TestDeployImageOverridesResolvedServiceWithoutChangingManifest(t *testing.T) {
+	loaded := lifecycleProject(false)
+	original := loaded.Project.Services["app"].Image
+	lifecycle := NewLifecycle(host.DefaultPaths(t.TempDir()), &lifecycleRunner{})
+
+	result, err := lifecycle.DeployImage(context.Background(), loaded, "app", "ghcr.io/acme/demo:build-42@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", true)
+	if err != nil {
+		t.Fatalf("DeployImage() error = %v", err)
+	}
+	if !result.DryRun || loaded.Project.Services["app"].Image != original {
+		t.Fatalf("DeployImage modified the source manifest: result=%#v image=%q", result, loaded.Project.Services["app"].Image)
+	}
+}
+
 func TestEnsureCaddyImportMigratesLegacyImport(t *testing.T) {
 	root := t.TempDir()
 	caddyFile := filepath.Join(root, "etc", "caddy", "Caddyfile")

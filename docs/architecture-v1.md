@@ -37,6 +37,7 @@ repeatable operations.
 - Optional monitoring runs Prometheus, Grafana, Node Exporter, and cAdvisor as
   a dedicated managed Docker stack.
 - Remote hosts are managed over SSH without a continuously running Omurga daemon.
+- Image deployment webhooks accept only signed CI callbacks containing immutable image digests.
 
 ## Host directories
 

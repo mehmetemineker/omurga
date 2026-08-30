@@ -11,6 +11,7 @@ type Paths struct {
 	OSRelease          string
 	ConfigRoot         string
 	ConfigFile         string
+	WebhookConfig      string
 	AlertConfig        string
 	AlertState         string
 	ProjectsConfig     string
@@ -64,6 +65,7 @@ func DefaultPaths(root string) Paths {
 		OSRelease:          join("etc/os-release"),
 		ConfigRoot:         join("etc/omurga"),
 		ConfigFile:         join("etc/omurga/config.yaml"),
+		WebhookConfig:      join("etc/omurga/webhooks.yaml"),
 		AlertConfig:        join("etc/omurga/alerts.yaml"),
 		AlertState:         join("var/lib/omurga/alert-state.json"),
 		ProjectsConfig:     join("etc/omurga/projects"),
