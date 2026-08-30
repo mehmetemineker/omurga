@@ -100,6 +100,23 @@ func TestDoctorReportsMissingDockerAsCritical(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsInactiveUFW(t *testing.T) {
+	paths := createInitializedPaths(t)
+	runner := healthyRunner()
+	runner.outputs[commandKey("ufw", "status", "verbose")] = "Status: inactive"
+
+	report := RunDoctor(context.Background(), paths, runner)
+	for _, check := range report.Checks {
+		if check.Name == "ufw" {
+			if check.Status != CheckWarning || !strings.Contains(check.Message, "inactive") {
+				t.Fatalf("unexpected UFW check: %#v", check)
+			}
+			return
+		}
+	}
+	t.Fatal("UFW check was not reported")
+}
+
 func TestDoctorReportsCaddyServiceConfigAccessFailure(t *testing.T) {
 	paths := createInitializedPaths(t)
 	runner := healthyRunner()
@@ -201,6 +218,7 @@ func healthyRunner() *fakeRunner {
 			"apt-get":         true,
 			"docker":          true,
 			"caddy":           true,
+			"ufw":             true,
 			"fail2ban-client": true,
 			"df":              true,
 			"runuser":         true,
@@ -212,6 +230,7 @@ func healthyRunner() *fakeRunner {
 			commandKey("docker", "info", "--format", "{{.ServerVersion}}"): "27.5.1",
 			commandKey("docker", "compose", "version", "--short"):          "2.32.4",
 			commandKey("caddy", "version"):                                 "v2.9.1",
+			commandKey("ufw", "status", "verbose"):                         "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\n22/tcp ALLOW IN Anywhere\n80/tcp ALLOW IN Anywhere\n443/tcp ALLOW IN Anywhere",
 			commandKey("fail2ban-client", "status", "sshd"):                "Status for the jail: sshd",
 			commandKey("systemctl", "is-active", "--quiet", "docker"):      "",
 			commandKey("systemctl", "is-active", "--quiet", "caddy"):       "",

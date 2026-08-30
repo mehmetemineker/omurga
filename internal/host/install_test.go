@@ -47,6 +47,7 @@ func TestInstallDockerDryRunDoesNotMutateHost(t *testing.T) {
 func TestInstallDockerRequiresExplicitConflictReplacement(t *testing.T) {
 	paths := DefaultPaths(t.TempDir())
 	runner := &fakeRunner{
+		available: map[string]bool{"ufw": true},
 		outputs: map[string]string{
 			commandKey("dpkg", "--print-architecture"):                  "amd64",
 			commandKey("dpkg-query", "-W", "-f=${Status}", "docker.io"): "install ok installed",
@@ -249,6 +250,82 @@ func TestInstallFail2banIsNoOpWhenHealthy(t *testing.T) {
 	}
 	if containsCommand(runner.calls, "apt-get ") {
 		t.Fatalf("healthy Fail2ban installation executed APT: %#v", runner.calls)
+	}
+}
+
+func TestInstallUFWConfiguresDefaultFirewall(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	runner := &fakeRunner{
+		available: map[string]bool{"ufw": true},
+		outputs: map[string]string{
+			commandKey("ufw", "status", "verbose"): "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\n22/tcp ALLOW IN Anywhere\n80/tcp ALLOW IN Anywhere\n443/tcp ALLOW IN Anywhere",
+		},
+		errors: map[string]error{},
+	}
+	installer := Installer{Paths: paths, Runner: runner, Downloader: fakeDownloader{}}
+
+	result, err := installer.InstallUFW(context.Background(), supportedRelease(), InstallOptions{})
+	if err != nil {
+		t.Fatalf("InstallUFW() error = %v", err)
+	}
+	if result.Component != "ufw" || result.AlreadyInstalled {
+		t.Fatalf("unexpected install result: %#v", result)
+	}
+	for _, command := range []string{
+		"apt-get install -y ufw",
+		"ufw default deny incoming",
+		"ufw default allow outgoing",
+		"ufw allow 22/tcp",
+		"ufw allow 80/tcp",
+		"ufw allow 443/tcp",
+		"ufw --force enable",
+	} {
+		if !containsCommand(runner.calls, command) {
+			t.Fatalf("expected command %q, got %#v", command, runner.calls)
+		}
+	}
+}
+
+func TestInstallUFWAllowsCustomSSHPort(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	runner := &fakeRunner{
+		available: map[string]bool{"ufw": true},
+		outputs: map[string]string{
+			commandKey("ufw", "status", "verbose"): "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\n2222/tcp ALLOW IN Anywhere\n80/tcp ALLOW IN Anywhere\n443/tcp ALLOW IN Anywhere",
+		},
+		errors: map[string]error{},
+	}
+	installer := Installer{Paths: paths, Runner: runner, Downloader: fakeDownloader{}}
+
+	if _, err := installer.InstallUFW(context.Background(), supportedRelease(), InstallOptions{UFWSSHPort: 2222}); err != nil {
+		t.Fatalf("InstallUFW(custom port) error = %v", err)
+	}
+	if !containsCommand(runner.calls, "ufw allow 2222/tcp") {
+		t.Fatalf("custom SSH port was not allowed: %#v", runner.calls)
+	}
+}
+
+func TestInstallUFWIsNoOpWhenHealthy(t *testing.T) {
+	paths := DefaultPaths(t.TempDir())
+	runner := &fakeRunner{
+		available: map[string]bool{"ufw": true},
+		outputs: map[string]string{
+			commandKey("dpkg-query", "-W", "-f=${Status}", "ufw"): "install ok installed",
+			commandKey("ufw", "status", "verbose"):                "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\n22/tcp ALLOW IN Anywhere\n80/tcp ALLOW IN Anywhere\n443/tcp ALLOW IN Anywhere",
+		},
+		errors: map[string]error{},
+	}
+	installer := Installer{Paths: paths, Runner: runner, Downloader: fakeDownloader{}}
+
+	result, err := installer.InstallUFW(context.Background(), supportedRelease(), InstallOptions{})
+	if err != nil {
+		t.Fatalf("InstallUFW() error = %v", err)
+	}
+	if !result.AlreadyInstalled {
+		t.Fatalf("expected a no-op installation result: %#v", result)
+	}
+	if containsCommand(runner.calls, "apt-get ") {
+		t.Fatalf("healthy UFW installation executed APT: %#v", runner.calls)
 	}
 }
 

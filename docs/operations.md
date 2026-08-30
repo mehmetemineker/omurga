@@ -38,6 +38,37 @@ sudo omurga doctor --json
 The `host status` and `host doctor` commands are aliases for the same health
 check behavior in the current CLI.
 
+## UFW firewall
+
+Install or repair the host firewall with Omurga. Preview the commands before
+enabling it on a remote server:
+
+```bash
+sudo omurga --dry-run host install ufw --ssh-port 22
+sudo omurga host install ufw --ssh-port 22
+```
+
+UFW denies incoming traffic by default, allows outgoing traffic, and opens
+only the configured SSH port plus TCP ports 80 and 443. If SSH uses a custom
+port, pass that port before enabling the firewall:
+
+```bash
+sudo omurga host install ufw --ssh-port 2222
+```
+
+Application ports are not opened automatically. Add them explicitly when
+needed, then verify the effective rules:
+
+```bash
+sudo ufw allow 8080/tcp
+sudo ufw status verbose
+sudo omurga doctor
+```
+
+Keep an active SSH session open while changing firewall rules. On a remote
+host, make sure the SSH port is allowed before enabling UFW; console access may
+be required to recover from an incorrect rule.
+
 ## Fail2ban
 
 Install or repair Fail2ban with Omurga:

@@ -70,15 +70,18 @@ omurga host detect --json
 
 ### `omurga host init`
 
-Create managed directories and install Docker, Caddy, Restic, and Fail2ban. It is
-idempotent and safe to run again after an interrupted setup.
+Create managed directories and install Docker, Caddy, Restic, UFW, and Fail2ban.
+UFW allows SSH, HTTP, and HTTPS by default. The command is idempotent and safe
+to run again after an interrupted setup.
 
 Options:
 
 - `--skip-docker` — do not install Docker.
 - `--skip-caddy` — do not install Caddy.
 - `--skip-restic` — do not install Restic.
+- `--skip-ufw` — do not install or configure UFW.
 - `--skip-fail2ban` — do not install Fail2ban.
+- `--ssh-port <port>` — SSH TCP port to allow in UFW (default: `22`).
 - `--replace-conflicting-docker` — remove conflicting distribution Docker packages before installing Docker CE.
 
 ```bash
@@ -91,17 +94,19 @@ sudo omurga host init --replace-conflicting-docker
 ### `omurga host install <component>`
 
 Install or repair one component. `<component>` is `docker`, `caddy`, `restic`,
-`fail2ban`, or `all`.
+`ufw`, `fail2ban`, or `all`.
 
 Option:
 
 - `--replace-conflicting-docker` — allow replacement of conflicting Docker packages.
+- `--ssh-port <port>` — SSH TCP port to allow in UFW (default: `22`).
 
 ```bash
 sudo omurga --dry-run host install docker
 sudo omurga host install docker
 sudo omurga host install caddy
 sudo omurga host install restic
+sudo omurga host install ufw --ssh-port 22
 sudo omurga host install fail2ban
 sudo omurga host install all
 ```

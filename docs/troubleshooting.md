@@ -34,6 +34,32 @@ Remote profiles use non-interactive `sudo -n` by default. Configure passwordless
 sudo for the deployment user or create the profile with `--sudo=false` when the
 remote user is already privileged.
 
+## UFW blocks a connection
+
+Inspect the active policy and rules:
+
+```bash
+sudo ufw status verbose
+sudo omurga doctor
+```
+
+Omurga opens the configured SSH port and TCP ports 80 and 443. If SSH uses a
+different port, repair the configuration with the correct value:
+
+```bash
+sudo omurga host install ufw --ssh-port 2222
+```
+
+Other application ports must be allowed explicitly, for example:
+
+```bash
+sudo ufw allow 8080/tcp
+```
+
+If an incorrect rule removed remote access, use the provider console or local
+terminal to fix the rule. Keep an existing SSH session open while changing
+firewall settings.
+
 ## Docker is missing or unhealthy
 
 ```bash

@@ -68,8 +68,9 @@ Preview everything that initialization would change:
 sudo omurga --dry-run host init
 ```
 
-Apply initialization. This creates Omurga directories and installs Docker,
-Caddy, Restic, and Fail2ban with an SSH jail:
+Apply initialization. This creates Omurga directories, installs Docker, Caddy,
+Restic, UFW, and Fail2ban, and configures the firewall for SSH, HTTP, and
+HTTPS:
 
 ```bash
 sudo omurga host init
@@ -81,9 +82,11 @@ Install only selected components when the host already has some dependencies:
 sudo omurga host init --skip-docker
 sudo omurga host init --skip-caddy
 sudo omurga host init --skip-restic
+sudo omurga host init --skip-ufw
 sudo omurga host install docker
 sudo omurga host install caddy
 sudo omurga host install restic
+sudo omurga host install ufw --ssh-port 22
 sudo omurga host install fail2ban
 ```
 

@@ -20,7 +20,7 @@ description: The practical guide to provisioning Linux hosts and operating Docke
 ## What Omurga manages
 
 <div class="cards">
-<div class="card"><h3>Hosts</h3><p>Detect Debian or Ubuntu, install Docker, Caddy, and Restic, update packages, and run health checks.</p></div>
+<div class="card"><h3>Hosts</h3><p>Detect Debian or Ubuntu, install Docker, Caddy, Restic, UFW, and Fail2ban, update packages, and run health checks.</p></div>
 <div class="card"><h3>Projects</h3><p>Define services in YAML, merge environments, deploy safely, configure gateways, and roll back.</p></div>
 <div class="card"><h3>Operations</h3><p>Back up data, send Telegram or email alerts, manage registries, and inspect Prometheus metrics in Grafana.</p></div>
 </div>

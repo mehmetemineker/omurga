@@ -26,6 +26,8 @@ repeatable operations.
 - Restic is the backup engine; PostgreSQL uses `pg_dump` and Redis uses snapshots.
 - The first remote backup targets are S3-compatible storage and SFTP.
 - The first alert channels are Telegram and SMTP email.
+- UFW is installed as an optional host security component with deny-incoming,
+  allow-outgoing, SSH, HTTP, and HTTPS rules.
 - Fail2ban is installed as an optional host security component with an Omurga-managed SSH jail.
 - Host monitoring checks CPU load, memory, disk capacity, failed services,
   managed container health, and Caddy certificate expiry through a persistent

@@ -103,6 +103,7 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 	checkCommand(ctx, runner, &report, "docker", "docker", []string{"info", "--format", "{{.ServerVersion}}"}, CheckCritical)
 	checkCommand(ctx, runner, &report, "docker-compose", "docker", []string{"compose", "version", "--short"}, CheckCritical)
 	checkCommand(ctx, runner, &report, "caddy", "caddy", []string{"version"}, CheckCritical)
+	checkUFW(ctx, runner, &report)
 	checkCommand(ctx, runner, &report, "fail2ban", "fail2ban-client", []string{"status", "sshd"}, CheckWarning)
 	if provider != nil {
 		dockerService := provider.ServiceManager().IsActiveCommand("docker")
@@ -132,6 +133,23 @@ func RunDoctor(ctx context.Context, paths Paths, runner Runner) DoctorReport {
 	}
 	checkBackupTimers(ctx, paths, runner, services, &report)
 	return report
+}
+
+func checkUFW(ctx context.Context, runner Runner, report *DoctorReport) {
+	if _, err := runner.LookPath("ufw"); err != nil {
+		addToReport(report, Check{Name: "ufw", Status: CheckWarning, Message: "ufw is not installed"})
+		return
+	}
+	output, err := runner.Run(ctx, "ufw", "status", "verbose")
+	if err != nil {
+		addToReport(report, Check{Name: "ufw", Status: CheckWarning, Message: err.Error()})
+		return
+	}
+	if !strings.Contains(output, "Status: active") {
+		addToReport(report, Check{Name: "ufw", Status: CheckWarning, Message: "UFW is installed but inactive"})
+		return
+	}
+	addToReport(report, Check{Name: "ufw", Status: CheckPass, Message: firstLine(output)})
 }
 
 func checkCaddyServiceConfig(ctx context.Context, paths Paths, runner Runner, root bool, report *DoctorReport) {

@@ -19,6 +19,7 @@ const (
 type InstallOptions struct {
 	DryRun                 bool
 	ReplaceDockerConflicts bool
+	UFWSSHPort             int
 }
 
 type InstallStep struct {
