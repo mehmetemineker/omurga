@@ -73,7 +73,6 @@ purge flag.
 - [Operations](operations.md) — backups, alerts, monitoring, registries, shared services, and remote hosts.
 - [Command reference](commands.md) — every command, argument, option, and common flag.
 - [Troubleshooting](troubleshooting.md) — diagnostics for Docker, Caddy, deployments, backups, and alerts.
-- [Publishing this site](publishing.md) — enable GitHub Pages and preview documentation locally.
 
 The versioned technical notes remain available for implementation details:
 [architecture](architecture-v1.md), [manifest specification](project-manifest-v1.md),
