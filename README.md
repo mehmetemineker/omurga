@@ -48,6 +48,49 @@ Debian and Ubuntu use the same Omurga package format. Build `amd64` and `arm64`
 packages with the instructions in [packaging/deb/README.md](packaging/deb/README.md).
 The `arm64` package can be installed on the tested Raspberry Pi system.
 
+Tagged releases are built automatically by GitHub Actions. Each release
+contains Linux `amd64` and `arm64` binaries, matching `.deb` packages, and a
+`SHA256SUMS` file. Download the appropriate asset from the project’s GitHub
+Releases page before installing it.
+
+### Install on Debian or Ubuntu from a GitHub release
+
+Check the architecture first:
+
+```bash
+dpkg --print-architecture
+```
+
+For a Raspberry Pi or another `arm64` host, download the `arm64` package. For
+an Intel or AMD host, download the `amd64` package. Replace `<owner>/<repo>`
+and the version in the following example:
+
+```bash
+VERSION=0.1.0
+REPO="your-account/omurga"
+curl -fL -o /tmp/omurga.deb \
+  "https://github.com/${REPO}/releases/download/v${VERSION}/omurga_${VERSION}_arm64.deb"
+sudo apt install /tmp/omurga.deb
+```
+
+For an `amd64` host, use this package name instead:
+
+```bash
+curl -fL -o /tmp/omurga.deb \
+  "https://github.com/${REPO}/releases/download/v${VERSION}/omurga_${VERSION}_amd64.deb"
+sudo apt install /tmp/omurga.deb
+```
+
+Verify the installation:
+
+```bash
+omurga version
+```
+
+The package installs the CLI and documentation only. It does not provision
+the host automatically. Run `sudo omurga host init` explicitly when host
+provisioning is required.
+
 ## Project workflow
 
 ```bash

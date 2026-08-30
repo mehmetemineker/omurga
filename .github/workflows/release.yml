@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build release artifacts
+        env:
+          OMURGA_COMMIT: ${{ github.sha }}
+          OMURGA_BUILD_DATE: ${{ github.event.head_commit.timestamp || '' }}
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "Release workflow must be started from a version tag (for example v0.1.0)." >&2
+            exit 1
+          fi
+
+          version="${GITHUB_REF_NAME#v}"
+          build_date="${OMURGA_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+          mkdir -p dist
+
+          for target in amd64 arm64; do
+            GOOS=linux GOARCH="${target}" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X omurga/internal/buildinfo.Version=${version} -X omurga/internal/buildinfo.Commit=${OMURGA_COMMIT} -X omurga/internal/buildinfo.Date=${build_date}" \
+              -o "dist/omurga-linux-${target}" ./cmd/omurga
+          done
+
+          bash packaging/deb/build.sh "${version}"
+          sha256sum dist/omurga-linux-* dist/*.deb > dist/SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Omurga ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/omurga-linux-amd64 \
+            dist/omurga-linux-arm64 \
+            dist/omurga_*.deb \
+            dist/SHA256SUMS

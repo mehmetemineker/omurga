@@ -32,3 +32,9 @@ sudo apt install ./omurga_0.1.0_arm64.deb
 The package installs only `/usr/bin/omurga` and documentation. It does not
 change the host or start services automatically; use `omurga host init` when
 host provisioning is explicitly wanted.
+
+## GitHub releases
+
+The repository release workflow runs tests, builds Linux `amd64` and `arm64`
+artifacts, creates both `.deb` packages, generates `SHA256SUMS`, and publishes
+everything to a GitHub Release when a `v*` tag is pushed.

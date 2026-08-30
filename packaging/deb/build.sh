@@ -22,6 +22,7 @@ for arch in ${ARCHES}; do
 
   stage="$(mktemp -d)"
   trap 'rm -rf "${stage}"' EXIT
+  chmod 0755 "${stage}"
   mkdir -p "${stage}/DEBIAN" "${stage}/usr/bin" "${stage}/usr/share/doc/omurga"
 
   sed -e "s/@VERSION@/${VERSION}/" -e "s/@ARCH@/${arch}/" \
