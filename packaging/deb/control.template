@@ -1,0 +1,9 @@
+Package: omurga
+Version: @VERSION@
+Section: admin
+Priority: optional
+Architecture: @ARCH@
+Maintainer: Omurga contributors
+Description: Declarative Linux host and Docker project manager
+ Omurga provisions supported Debian and Ubuntu hosts, manages Docker Compose
+ projects, configures Caddy, and operates backups, secrets, and alerts.

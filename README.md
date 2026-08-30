@@ -42,6 +42,12 @@ On PowerShell, replace `$PWD` with `${PWD}`. Most host operations need a real
 supported Linux VM; manifest validation, rendering, scaffolding, and unit tests
 work on Windows, macOS, and Linux.
 
+## Debian and Ubuntu packages
+
+Debian and Ubuntu use the same Omurga package format. Build `amd64` and `arm64`
+packages with the instructions in [packaging/deb/README.md](packaging/deb/README.md).
+The `arm64` package can be installed on the tested Raspberry Pi system.
+
 ## Project workflow
 
 ```bash
