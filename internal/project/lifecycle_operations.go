@@ -31,6 +31,19 @@ type LogResult struct {
 	Command     []string `json:"command"`
 }
 
+type ExecOptions struct {
+	TTY     bool
+	Command []string
+}
+
+type ExecResult struct {
+	Project     string   `json:"project"`
+	Environment string   `json:"environment"`
+	Service     string   `json:"service"`
+	DryRun      bool     `json:"dryRun"`
+	Command     []string `json:"command"`
+}
+
 type RollbackResult struct {
 	Project      string          `json:"project"`
 	Environment  string          `json:"environment"`
@@ -108,6 +121,90 @@ func (l Lifecycle) Logs(ctx context.Context, loaded manifest.LoadedProject, opti
 	}
 	if err := streamer.Stream(ctx, stdout, stderr, "docker", args...); err != nil {
 		return LogResult{}, fmt.Errorf("could not stream project logs: %w", err)
+	}
+	return result, nil
+}
+
+func (l Lifecycle) CurrentDeployment(ctx context.Context, loaded manifest.LoadedProject) (state.Deployment, bool, error) {
+	environment := gateway.EnvironmentKey(loaded.Environment)
+	if _, err := os.Stat(l.Paths.StateDB); os.IsNotExist(err) {
+		return state.Deployment{}, false, nil
+	} else if err != nil {
+		return state.Deployment{}, false, fmt.Errorf("could not inspect state database: %w", err)
+	}
+	store, err := state.OpenReadOnly(ctx, l.Paths.StateDB)
+	if err != nil {
+		return state.Deployment{}, false, err
+	}
+	defer store.Close()
+	deployment, exists, err := store.GetDeployment(ctx, loaded.Project.Name, environment)
+	if err != nil {
+		return state.Deployment{}, false, err
+	}
+	return deployment, exists, nil
+}
+
+func (l Lifecycle) CurrentLayout(ctx context.Context, loaded manifest.LoadedProject) (DeploymentLayout, state.Deployment, bool, error) {
+	layout := l.Layout(loaded.Project.Name, loaded.Environment)
+	deployment, exists, err := l.CurrentDeployment(ctx, loaded)
+	if err != nil {
+		return DeploymentLayout{}, state.Deployment{}, false, err
+	}
+	if exists {
+		layout = activeComposeLayout(layout, deployment)
+	}
+	return layout, deployment, exists, nil
+}
+
+func (l Lifecycle) Exec(ctx context.Context, loaded manifest.LoadedProject, service string, options ExecOptions, dryRun bool, stdin io.Reader, stdout, stderr io.Writer) (ExecResult, error) {
+	environment := gateway.EnvironmentKey(loaded.Environment)
+	if service == "" {
+		return ExecResult{}, fmt.Errorf("project service is required")
+	}
+	if _, exists := loaded.Project.Services[service]; !exists {
+		return ExecResult{}, fmt.Errorf("service %q is not declared in project %s", service, loaded.Project.Name)
+	}
+	if len(options.Command) == 0 {
+		return ExecResult{}, fmt.Errorf("a command is required for project exec")
+	}
+
+	layout := l.Layout(loaded.Project.Name, environment)
+	args := composeArgs(layout, loaded.Project.Name, environment, "exec")
+	if options.TTY {
+		args = append(args, "--interactive", "--tty")
+	} else {
+		args = append(args, "--no-TTY")
+	}
+	args = append(args, service)
+	args = append(args, options.Command...)
+	result := ExecResult{
+		Project: loaded.Project.Name, Environment: environment, Service: service,
+		DryRun: dryRun, Command: append([]string{"docker"}, args...),
+	}
+	if dryRun {
+		return result, nil
+	}
+
+	deployment, err := l.deployment(ctx, loaded.Project.Name, environment, true)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	activeLayout := activeComposeLayout(layout, deployment)
+	args = composeArgsWithProjectName(activeLayout, activeComposeProjectName(activeLayout, loaded.Project.Name, environment), "exec")
+	if options.TTY {
+		args = append(args, "--interactive", "--tty")
+	} else {
+		args = append(args, "--no-TTY")
+	}
+	args = append(args, service)
+	args = append(args, options.Command...)
+	result.Command = append([]string{"docker"}, args...)
+	runner, ok := l.Runner.(host.IORunner)
+	if !ok {
+		return ExecResult{}, fmt.Errorf("project exec is not supported by the command runner")
+	}
+	if err := runner.RunIO(ctx, stdin, stdout, stderr, "docker", args...); err != nil {
+		return ExecResult{}, fmt.Errorf("could not execute command in project service: %w", err)
 	}
 	return result, nil
 }

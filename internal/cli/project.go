@@ -26,6 +26,11 @@ func newProjectCommand(opts *options) *cobra.Command {
 		newProjectCreateCommand(opts),
 		newProjectRenderCommand(opts),
 		newProjectDeployCommand(opts),
+		newProjectRepairCommand(opts),
+		newProjectExecCommand(opts),
+		newProjectShellCommand(opts),
+		newProjectInspectCommand(opts),
+		newProjectDiffCommand(opts),
 		newProjectStatusCommand(opts),
 		newProjectControlCommand(opts, "restart"),
 		newProjectControlCommand(opts, "stop"),
@@ -37,6 +42,200 @@ func newProjectCommand(opts *options) *cobra.Command {
 	)
 	cmd.AddCommand(newProjectValidateCommand(opts))
 	return cmd
+}
+
+func newProjectExecCommand(opts *options) *cobra.Command {
+	return newProjectExecLikeCommand(opts, false)
+}
+
+func newProjectShellCommand(opts *options) *cobra.Command {
+	return newProjectExecLikeCommand(opts, true)
+}
+
+func newProjectExecLikeCommand(opts *options, shell bool) *cobra.Command {
+	use := "exec <project-directory-or-manifest> <service> [command...]"
+	short := "Run a command in an active project service"
+	if shell {
+		use = "shell <project-directory-or-manifest> <service>"
+		short = "Open an interactive shell in an active project service"
+	}
+	return &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			loaded, err := loadProjectArgument([]string{args[0]}, opts.environment)
+			if err != nil {
+				return err
+			}
+			runner := host.ExecRunner{}
+			if !opts.dryRun {
+				if err := requireRoot(cmd.Context(), runner, "project "+map[bool]string{true: "shell", false: "exec"}[shell]); err != nil {
+					return err
+				}
+			}
+			command := args[2:]
+			if shell {
+				command = []string{"/bin/sh"}
+			}
+			lifecycle := projectruntime.NewLifecycle(host.DefaultPaths("/"), runner)
+			result, err := lifecycle.Exec(cmd.Context(), loaded, args[1], projectruntime.ExecOptions{
+				TTY: shell, Command: command,
+			}, opts.dryRun, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			if opts.dryRun {
+				return writeExecResult(cmd.OutOrStdout(), result, opts)
+			}
+			return nil
+		},
+	}
+}
+
+type projectInspectService struct {
+	Name        string `json:"name"`
+	Image       string `json:"image"`
+	Expose      []int  `json:"expose,omitempty"`
+	Volumes     int    `json:"volumeCount"`
+	Secrets     int    `json:"secretCount"`
+	Healthcheck bool   `json:"healthcheck"`
+}
+
+type projectInspectResult struct {
+	Project     string                          `json:"project"`
+	Environment string                          `json:"environment"`
+	Manifest    string                          `json:"manifest"`
+	Deployed    bool                            `json:"deployed"`
+	Deployment  *state.Deployment               `json:"deployment,omitempty"`
+	Layout      projectruntime.DeploymentLayout `json:"layout"`
+	Services    []projectInspectService         `json:"services"`
+	Routes      []manifest.Route                `json:"routes,omitempty"`
+}
+
+func newProjectInspectCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "inspect [project-directory-or-manifest]",
+		Short: "Inspect project configuration and recorded deployment state",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			loaded, err := loadProjectArgument(args, opts.environment)
+			if err != nil {
+				return err
+			}
+			lifecycle := projectruntime.NewLifecycle(host.DefaultPaths("/"), host.ExecRunner{})
+			layout, deployment, deployed, err := lifecycle.CurrentLayout(cmd.Context(), loaded)
+			if err != nil {
+				return err
+			}
+			services := make([]projectInspectService, 0, len(loaded.Project.Services))
+			serviceNames := make([]string, 0, len(loaded.Project.Services))
+			for name := range loaded.Project.Services {
+				serviceNames = append(serviceNames, name)
+			}
+			sort.Strings(serviceNames)
+			for _, name := range serviceNames {
+				service := loaded.Project.Services[name]
+				services = append(services, projectInspectService{
+					Name: name, Image: service.Image, Expose: service.Expose,
+					Volumes: len(service.Volumes), Secrets: len(service.Secrets),
+					Healthcheck: len(service.Healthcheck.Command) > 0,
+				})
+			}
+			result := projectInspectResult{
+				Project: loaded.Project.Name, Environment: gateway.EnvironmentKey(loaded.Environment),
+				Manifest: loaded.Path, Deployed: deployed, Layout: layout,
+				Services: services, Routes: loaded.Project.Gateway.Routes,
+			}
+			if deployed {
+				result.Deployment = &deployment
+			}
+			return writeProjectInspect(cmd.OutOrStdout(), result, opts)
+		},
+	}
+}
+
+type projectDiffResult struct {
+	Project         string `json:"project"`
+	Environment     string `json:"environment"`
+	Deployed        bool   `json:"deployed"`
+	Changed         bool   `json:"changed"`
+	DesiredRevision string `json:"desiredRevision"`
+	CurrentRevision string `json:"currentRevision,omitempty"`
+	Manifest        string `json:"manifest"`
+}
+
+func newProjectDiffCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "diff [project-directory-or-manifest]",
+		Short: "Compare the desired project revision with the active deployment",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			loaded, err := loadProjectArgument(args, opts.environment)
+			if err != nil {
+				return err
+			}
+			lifecycle := projectruntime.NewLifecycle(host.DefaultPaths("/"), host.ExecRunner{})
+			desired, err := lifecycle.Deploy(cmd.Context(), loaded, true)
+			if err != nil {
+				return err
+			}
+			deployment, deployed, err := lifecycle.CurrentDeployment(cmd.Context(), loaded)
+			if err != nil {
+				return err
+			}
+			result := projectDiffResult{
+				Project: loaded.Project.Name, Environment: gateway.EnvironmentKey(loaded.Environment),
+				Deployed: deployed, Changed: !deployed || desired.Revision != deployment.Revision,
+				DesiredRevision: desired.Revision, Manifest: loaded.Path,
+			}
+			if deployed {
+				result.CurrentRevision = deployment.Revision
+			}
+			return writeProjectDiff(cmd.OutOrStdout(), result, opts)
+		},
+	}
+}
+
+func newProjectRepairCommand(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "repair [project-directory-or-manifest]",
+		Short: "Reconcile missing project containers and gateway state",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			loaded, err := loadProjectArgument(args, opts.environment)
+			if err != nil {
+				return err
+			}
+			runner := host.ExecRunner{}
+			if !opts.dryRun {
+				if err := requireRoot(cmd.Context(), runner, "project repair"); err != nil {
+					return err
+				}
+			}
+			lifecycle, err := platformLifecycle(host.DefaultPaths("/"), runner, opts.dryRun, progress.FromContext(cmd.Context()))
+			if err != nil {
+				return err
+			}
+			result, err := lifecycle.Deploy(cmd.Context(), loaded, opts.dryRun)
+			if err != nil {
+				return err
+			}
+			return writeRepairResult(cmd.OutOrStdout(), result, opts)
+		},
+	}
 }
 
 func newProjectListCommand(opts *options) *cobra.Command {
@@ -417,6 +616,96 @@ func writeProjectStatus(writer io.Writer, result projectruntime.StatusResult, op
 		}
 	}
 	return nil
+}
+
+func writeExecResult(writer io.Writer, result projectruntime.ExecResult, opts *options) error {
+	if opts.quiet {
+		return nil
+	}
+	if opts.json {
+		return json.NewEncoder(writer).Encode(result)
+	}
+	_, err := fmt.Fprintf(writer, "would run in %s/%s (%s): %s\n", result.Project, result.Environment, result.Service, strings.Join(result.Command, " "))
+	return err
+}
+
+func writeProjectInspect(writer io.Writer, result projectInspectResult, opts *options) error {
+	if opts.quiet {
+		return nil
+	}
+	if opts.json {
+		return json.NewEncoder(writer).Encode(result)
+	}
+	if _, err := fmt.Fprintf(writer, "project %s/%s\n", result.Project, result.Environment); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(writer, "  manifest   %s\n", result.Manifest); err != nil {
+		return err
+	}
+	stateLabel := "not deployed"
+	if result.Deployed && result.Deployment != nil {
+		stateLabel = fmt.Sprintf("%s (revision %.12s)", result.Deployment.Status, result.Deployment.Revision)
+	}
+	if _, err := fmt.Fprintf(writer, "  deployment  %s\n", stateLabel); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(writer, "  compose     %s\n  caddy       %s\n", result.Layout.Compose, result.Layout.Caddy); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(writer, "  services:"); err != nil {
+		return err
+	}
+	for _, service := range result.Services {
+		health := "no healthcheck"
+		if service.Healthcheck {
+			health = "healthcheck"
+		}
+		if _, err := fmt.Fprintf(writer, "    %-16s %-36s %s\n", service.Name, service.Image, health); err != nil {
+			return err
+		}
+	}
+	for _, route := range result.Routes {
+		if _, err := fmt.Fprintf(writer, "  route       %s -> %s:%d\n", route.Domain, route.Service, route.Port); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeProjectDiff(writer io.Writer, result projectDiffResult, opts *options) error {
+	if opts.quiet {
+		return nil
+	}
+	if opts.json {
+		return json.NewEncoder(writer).Encode(result)
+	}
+	if !result.Deployed {
+		_, err := fmt.Fprintf(writer, "project %s/%s is not deployed; deployment required\n", result.Project, result.Environment)
+		return err
+	}
+	if !result.Changed {
+		_, err := fmt.Fprintf(writer, "project %s/%s is up to date (revision %.12s)\n", result.Project, result.Environment, result.CurrentRevision)
+		return err
+	}
+	_, err := fmt.Fprintf(writer, "project %s/%s has changes\n  current  %.12s\n  desired  %.12s\n", result.Project, result.Environment, result.CurrentRevision, result.DesiredRevision)
+	return err
+}
+
+func writeRepairResult(writer io.Writer, result projectruntime.DeployResult, opts *options) error {
+	if opts.quiet {
+		return nil
+	}
+	if opts.json {
+		return json.NewEncoder(writer).Encode(result)
+	}
+	mode := "repaired"
+	if result.DryRun {
+		mode = "repair plan for"
+	}
+	if _, err := fmt.Fprintf(writer, "%s %s/%s (revision %.12s)\n", mode, result.Project, result.Environment, result.Revision); err != nil {
+		return err
+	}
+	return writeLifecycleSteps(writer, result.Steps)
 }
 
 func writeControlResult(writer io.Writer, result projectruntime.ControlResult, opts *options) error {

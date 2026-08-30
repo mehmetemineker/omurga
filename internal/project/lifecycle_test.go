@@ -64,6 +64,12 @@ func (r *lifecycleRunner) Stream(_ context.Context, stdout, _ io.Writer, name st
 	return err
 }
 
+func (r *lifecycleRunner) RunIO(_ context.Context, _ io.Reader, stdout, _ io.Writer, name string, args ...string) error {
+	r.calls = append(r.calls, strings.Join(append([]string{name}, args...), " "))
+	_, err := io.WriteString(stdout, r.streamOutput)
+	return err
+}
+
 func TestDeployDryRunDoesNotMutateFilesystemOrState(t *testing.T) {
 	root := t.TempDir()
 	paths := host.DefaultPaths(root)
@@ -390,6 +396,31 @@ func TestLogsStreamsSelectedService(t *testing.T) {
 	}
 	if _, err := lifecycle.Logs(ctx, loaded, LogOptions{Tail: "10", Services: []string{"missing"}}, true, output, output); err == nil {
 		t.Fatal("Logs() accepted an unknown service")
+	}
+}
+
+func TestExecUsesActiveDeploymentAndDeclaredService(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	paths := host.DefaultPaths(root)
+	writeTestFile(t, paths.CaddyFile, []byte(":80 { respond \"ok\" }\n"), 0o644)
+	runner := &lifecycleRunner{streamOutput: "ready\n"}
+	lifecycle := NewLifecycle(paths, runner)
+	loaded := lifecycleProject(false)
+	if _, err := lifecycle.Deploy(ctx, loaded, false); err != nil {
+		t.Fatalf("Deploy() error = %v", err)
+	}
+
+	output := &bytes.Buffer{}
+	result, err := lifecycle.Exec(ctx, loaded, "app", ExecOptions{Command: []string{"nginx", "-T"}}, false, strings.NewReader(""), output, output)
+	if err != nil {
+		t.Fatalf("Exec() error = %v", err)
+	}
+	if output.String() != "ready\n" || !strings.Contains(strings.Join(result.Command, " "), "compose --project-name demo-production --file") || !strings.Contains(strings.Join(result.Command, " "), "exec --no-TTY app nginx -T") {
+		t.Fatalf("unexpected exec result: %#v output=%q calls=%v", result, output.String(), runner.calls)
+	}
+	if _, err := lifecycle.Exec(ctx, loaded, "missing", ExecOptions{Command: []string{"true"}}, true, nil, output, output); err == nil {
+		t.Fatal("Exec() accepted an undeclared service")
 	}
 }
 

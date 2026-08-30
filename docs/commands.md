@@ -302,6 +302,63 @@ sudo omurga --dry-run --env production project deploy ./blog
 sudo omurga --env production project deploy ./blog
 ```
 
+### `omurga project repair [path]`
+
+Reconcile an existing project when containers, generated artifacts, or the
+gateway route may be missing. It uses the normal deployment safety checks and
+rollback behavior, so it is safe to repeat after an interrupted operation.
+
+```bash
+sudo omurga --dry-run project repair ./blog
+sudo omurga project repair ./blog
+```
+
+### `omurga project exec <path> <service> [command...]`
+
+Run a command in the active deployment of a declared project service. The
+active Compose slot is resolved from Omurga state, including blue-green
+deployments.
+
+```bash
+sudo omurga project exec ./blog app nginx -T
+sudo omurga --dry-run project exec ./blog app env
+```
+
+Only manifest-declared services can be selected. Use `--dry-run` to print the
+exact Docker command without running it.
+
+### `omurga project shell <path> <service>`
+
+Open an interactive `/bin/sh` session in the active service container:
+
+```bash
+sudo omurga project shell ./blog app
+omurga --host pi project shell ./blog app
+```
+
+The remote host runner allocates a TTY automatically for this command.
+
+### `omurga project inspect [path]`
+
+Show a safe project summary: resolved manifest path, deployment state, active
+configuration paths, declared images, healthcheck presence, and gateway routes.
+Environment values and secret contents are not printed.
+
+```bash
+omurga project inspect ./blog
+omurga --json --env production project inspect ./blog
+```
+
+### `omurga project diff [path]`
+
+Compare the resolved desired manifest revision with the active deployment.
+This is useful before deploy or repair and does not change host state.
+
+```bash
+omurga --env production project diff ./blog
+omurga --json --env production project diff ./blog
+```
+
 ### `omurga project status [path]`
 
 Show the recorded deployment revision and live Compose container state.
@@ -374,6 +431,25 @@ List deployments recorded in Omurga’s state database:
 omurga project list
 omurga project list --json
 ```
+
+## Support commands
+
+### `omurga support bundle`
+
+Create a root-readable diagnostic archive for troubleshooting. The bundle
+contains doctor results, deployment metadata, container status, failed
+systemd units, and Caddy status. It intentionally excludes logs, configuration
+files, environment values, and secret contents.
+
+```bash
+sudo omurga --dry-run support bundle
+sudo omurga support bundle
+sudo omurga support bundle --output /tmp/omurga-support.tar.gz
+sudo omurga support bundle --json
+```
+
+The default output is a timestamped archive under `/tmp`. The command refuses
+to overwrite an existing output file.
 
 ## Environment commands
 

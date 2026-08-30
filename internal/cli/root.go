@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"omurga/internal/buildinfo"
+	"omurga/internal/host"
 	"omurga/internal/progress"
+	"omurga/internal/support"
 )
 
 type options struct {
@@ -76,7 +80,62 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newAlertCommand(opts))
 	cmd.AddCommand(newMonitoringCommand(opts))
 	cmd.AddCommand(newWebhookCommand(opts))
+	cmd.AddCommand(newSupportCommand(opts))
 
+	return cmd
+}
+
+func newSupportCommand(opts *options) *cobra.Command {
+	return newGroupCommand("support", "Create safe diagnostics for troubleshooting", newSupportBundleCommand(opts))
+}
+
+func newSupportBundleCommand(opts *options) *cobra.Command {
+	output := ""
+	cmd := &cobra.Command{
+		Use:   "bundle",
+		Short: "Create a secrets-free support bundle",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireLocalHost(opts.host); err != nil {
+				return err
+			}
+			if output == "" {
+				output = filepath.Join(os.TempDir(), "omurga-support-"+time.Now().UTC().Format("20060102-150405Z")+".tar.gz")
+			}
+			if !filepath.IsAbs(output) {
+				return fmt.Errorf("support bundle output path must be absolute")
+			}
+			if opts.dryRun {
+				if opts.quiet {
+					return nil
+				}
+				if opts.json {
+					return json.NewEncoder(cmd.OutOrStdout()).Encode(struct {
+						Path   string `json:"path"`
+						DryRun bool   `json:"dryRun"`
+					}{output, true})
+				}
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "would create support bundle at %s\n", output)
+				return err
+			}
+			if err := requireRoot(cmd.Context(), host.ExecRunner{}, "support bundle"); err != nil {
+				return err
+			}
+			result, err := support.Create(cmd.Context(), host.DefaultPaths("/"), host.ExecRunner{}, output)
+			if err != nil {
+				return err
+			}
+			if opts.quiet {
+				return nil
+			}
+			if opts.json {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "created support bundle at %s\n", result.Path)
+			return err
+		},
+	}
+	cmd.Flags().StringVarP(&output, "output", "o", "", "absolute output path for the support bundle")
 	return cmd
 }
 

@@ -107,6 +107,11 @@ omurga --dry-run project deploy ./demo --env production
 sudo omurga project deploy ./demo --env production
 sudo omurga project status ./demo --env production
 sudo omurga project logs ./demo --env production --follow
+sudo omurga project exec ./demo app nginx -T
+sudo omurga project shell ./demo app
+omurga project inspect ./demo --env production
+omurga project diff ./demo --env production
+sudo omurga project repair ./demo --env production
 sudo omurga project rollback ./demo --env production
 sudo omurga project delete ./demo --env production
 ```
@@ -120,6 +125,13 @@ bind mounts use the safe in-place path with automatic rollback. Gateway ports
 bind only to `127.0.0.1`; Caddy is the public entry point.
 Persistent data is preserved during deletion unless both `--purge-data` and
 `--yes` are supplied.
+
+For troubleshooting, create a safe diagnostic archive that excludes secret
+contents and environment values:
+
+```bash
+sudo omurga support bundle
+```
 
 HTTPS routes use Caddy automatic HTTPS and Let’s Encrypt-compatible ACME
 certificate management. Point the domain DNS record to the host, allow inbound
