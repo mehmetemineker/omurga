@@ -39,7 +39,9 @@ func TestEncryptedStoreLifecycleAndMaterialization(t *testing.T) {
 		t.Fatalf("unexpected names: %#v", names)
 	}
 	runtimeRoot := filepath.Join(root, "run", "secrets")
-	exists, err := manager.Materialize("demo", "production", runtimeRoot, []MaterializeSpec{{Name: "database-password", Mode: 0o400}})
+	exists, err := manager.Materialize("demo", "production", runtimeRoot, []MaterializeSpec{{
+		Name: "database-password", Mode: 0o400, UID: os.Getuid(), GID: os.Getgid(),
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
