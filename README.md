@@ -61,6 +61,17 @@ Check the architecture first:
 dpkg --print-architecture
 ```
 
+To detect the distribution and architecture automatically, download the latest
+release package, verify its SHA256 checksum, and install it with one command:
+
+```bash
+curl -fsSL https://github.com/mehmetemineker/omurga/releases/latest/download/install.sh | bash
+```
+
+The installer supports Debian and Ubuntu on `arm64` and `amd64`. It resolves
+the latest GitHub release automatically; use the manual commands below when a
+specific release must be selected.
+
 For a Raspberry Pi or another `arm64` host, download the `arm64` package. For
  an Intel or AMD host, download the `amd64` package:
 

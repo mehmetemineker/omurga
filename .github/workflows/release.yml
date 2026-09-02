@@ -62,4 +62,5 @@ jobs:
             dist/omurga-linux-amd64 \
             dist/omurga-linux-arm64 \
             dist/omurga_*.deb \
-            dist/SHA256SUMS
+            dist/SHA256SUMS \
+            install.sh

@@ -31,6 +31,18 @@ systemctl --version | head -n 1
 Download the asset matching the host architecture from the repository’s
 [Releases](https://github.com/mehmetemineker/omurga/releases) page.
 
+For the normal installation, let the installer detect Debian/Ubuntu and the
+host architecture. It downloads the latest release, verifies `SHA256SUMS`, and
+installs the matching package:
+
+```bash
+curl -fsSL https://github.com/mehmetemineker/omurga/releases/latest/download/install.sh | bash
+omurga version
+```
+
+The automatic installer supports `arm64` and `amd64`. The explicit download
+commands below are useful when a specific release must be pinned.
+
 ```bash
 # Raspberry Pi and other 64-bit ARM hosts
 curl -fL -o /tmp/omurga.deb \

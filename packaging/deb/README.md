@@ -37,4 +37,5 @@ host provisioning is explicitly wanted.
 
 The repository release workflow runs tests, builds Linux `amd64` and `arm64`
 artifacts, creates both `.deb` packages, generates `SHA256SUMS`, and publishes
-everything to a GitHub Release when a `v*` tag is pushed.
+everything, including the automatic `install.sh` installer, to a GitHub Release
+when a `v*` tag is pushed.
