@@ -18,6 +18,11 @@ Install Docker and Caddy on a host that already has Omurga directories:
 sudo omurga --dry-run host install docker
 sudo omurga host install docker
 sudo omurga host install caddy
+sudo omurga host install restic
+sudo omurga host install unattended-upgrades
+sudo omurga host install ufw
+sudo omurga host install fail2ban
+sudo omurga host install all
 ```
 
 Supported components are `docker`, `caddy`, `restic`,

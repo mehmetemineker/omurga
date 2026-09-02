@@ -15,7 +15,12 @@ remote Linux machine for Omurga.
 | Preview or apply the complete setup | [`host init`](init/) |
 | Install one component | [`host install`](install/) |
 | Update system packages | [`host update`](update/) |
-| Run host health checks | [`host status`](status/) or [`host doctor`](doctor/) |
+| Run a host status check | [`host status`](status/) |
+| Run a detailed host diagnosis | [`host doctor`](doctor/) |
+| Add a remote host profile | [`host add`](../remote/add/) |
+| List remote host profiles | [`host list`](../remote/list/) |
+| Show a remote host profile | [`host show`](../remote/show/) |
+| Remove a remote host profile | [`host remove`](../remote/remove/) |
 
 ## New host scenario
 
