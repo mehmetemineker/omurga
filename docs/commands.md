@@ -45,6 +45,7 @@ remains safe for scripts.
 
 ### Create and operate projects
 
+- [AI project generation]({{ '/commands/ai/' | relative_url }}) — generate validated projects with a remote LLM.
 - [Project overview]({{ '/commands/project/' | relative_url }}) — create, validate, render, deploy, repair, inspect, and remove projects.
 - [Project lifecycle]({{ '/commands/project/lifecycle/' | relative_url }}) — deploy, repair, status, restart, stop, rollback, and delete.
 - [Project service access]({{ '/commands/project/access/' | relative_url }}) — execute commands, open a shell, and read logs.

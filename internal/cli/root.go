@@ -69,6 +69,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newDoctorCommand(opts, "doctor"))
 	cmd.AddCommand(newHostCommand(opts))
 	cmd.AddCommand(newProjectCommand(opts))
+	cmd.AddCommand(newAICommand(opts))
 	cmd.AddCommand(newEnvironmentCommand(opts))
 	cmd.AddCommand(newSecretCommand(opts))
 	cmd.AddCommand(newGatewayCommand(opts))

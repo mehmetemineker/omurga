@@ -109,6 +109,22 @@ provisioning is required.
 
 ## Project workflow
 
+Projects can also be generated from a natural-language request through a
+remote OpenAI-compatible LLM. Local models are not supported:
+
+```bash
+omurga ai configure \
+  --endpoint https://api.example.com/v1/chat/completions \
+  --model provider-model-name
+omurga ai create \
+  "Create a production project named lixy using ghcr.io/acme/lixy:2.0.0 on port 3000 with HTTPS" \
+  --directory ~/omurga-lab \
+  --api-key-file ~/.config/omurga/llm-api-key
+```
+
+Review the generated manifest and deploy explicitly with the normal project
+workflow. See the [AI project generation guide](docs/commands/ai/).
+
 ```bash
 omurga project create demo
 omurga project validate ./demo --env production
