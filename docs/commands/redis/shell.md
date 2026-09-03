@@ -8,7 +8,7 @@ description: Open an interactive Redis CLI.
 
 ```bash
 sudo omurga redis shell ./demo
-sudo omurga --host pi redis shell ./demo --instance cache
+sudo omurga --host production redis shell ./demo --instance cache
 ```
 
 Exit with `QUIT` or `Ctrl-D`.

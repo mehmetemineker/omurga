@@ -79,7 +79,7 @@ remains safe for scripts.
 
 ## Common scenarios
 
-### “I have a new Raspberry Pi”
+### “I have a new Debian or Ubuntu host”
 
 ```bash
 omurga host detect

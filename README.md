@@ -46,7 +46,7 @@ work on Windows, macOS, and Linux.
 
 Debian and Ubuntu use the same Omurga package format. Build `amd64` and `arm64`
 packages with the instructions in [packaging/deb/README.md](packaging/deb/README.md).
-The `arm64` package can be installed on the tested Raspberry Pi system.
+The `arm64` package can be installed on compatible 64-bit ARM systems.
 
 Tagged releases are built automatically by GitHub Actions. Each release
 contains Linux `amd64` and `arm64` binaries, matching `.deb` packages, and a
@@ -72,8 +72,8 @@ The installer supports Debian and Ubuntu on `arm64` and `amd64`. It resolves
 the latest GitHub release automatically; use the manual commands below when a
 specific release must be selected.
 
-For a Raspberry Pi or another `arm64` host, download the `arm64` package. For
- an Intel or AMD host, download the `amd64` package:
+For an `arm64` host, download the `arm64` package. For an Intel or AMD host,
+download the `amd64` package:
 
 ```bash
 curl -fL -o /tmp/omurga.deb \
@@ -117,7 +117,7 @@ omurga ai configure \
   --endpoint https://api.example.com/v1/chat/completions \
   --model provider-model-name
 omurga ai create \
-  "Create a production project named lixy using ghcr.io/acme/lixy:2.0.0 on port 3000 with HTTPS" \
+  "Create a production project named demo using ghcr.io/example/demo:2.0.0 on port 3000 with HTTPS" \
   --directory ~/omurga-lab \
   --api-key-file ~/.config/omurga/llm-api-key
 ```
@@ -255,8 +255,7 @@ removal preserves its bind-mounted data unless explicit purge flags are used.
 
 Omurga can install a self-contained monitoring stack for host and container
 metrics. The stack includes Prometheus, Grafana, Node Exporter, and cAdvisor.
-Images are pinned and the official images support the Raspberry Pi `arm64`
-platform.
+Images are pinned and the official images support `amd64` and `arm64` hosts.
 
 ```bash
 sudo omurga monitoring install
@@ -276,7 +275,7 @@ The password file is root-only. Custom ports or a LAN bind address can be
 selected explicitly:
 
 ```bash
-sudo omurga monitoring install --bind-address 192.168.0.50 \
+sudo omurga monitoring install --bind-address 192.0.2.10 \
   --prometheus-port 9090 --grafana-port 3000
 ```
 

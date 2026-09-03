@@ -1,8 +1,7 @@
 # Debian package
 
 The same `.deb` package format is supported by Debian and Ubuntu. Omurga
-currently produces packages for `amd64` and `arm64`; the latter is suitable
-for the tested Raspberry Pi Debian installation.
+currently produces packages for `amd64` and `arm64` systems.
 
 Build both packages on a Debian-based system:
 

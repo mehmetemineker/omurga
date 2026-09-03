@@ -12,7 +12,7 @@ description: Install and operate Prometheus, Grafana, Node Exporter, and cAdviso
 | See monitoring containers | [monitoring status](status/) |
 | Remove the stack | [monitoring remove](remove/) |
 
-## Scenario: add monitoring to a Pi
+## Scenario: add monitoring to a Linux host
 
 ```bash
 sudo omurga --dry-run monitoring install
@@ -20,5 +20,5 @@ sudo omurga monitoring install
 sudo omurga monitoring status
 ```
 
-The stack uses additional memory and disk. On a Pi 3, check available
-resources before installing it.
+The stack uses additional memory and disk. Check available resources before
+installing it.

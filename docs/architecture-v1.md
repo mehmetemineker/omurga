@@ -187,7 +187,7 @@ atomically and package services are enabled through systemd.
 The installation contracts follow the official
 [Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/),
 [Docker Engine on Debian](https://docs.docker.com/engine/install/debian/), and
-[Caddy Debian/Ubuntu package](https://caddyserver.com/docs/install#debian-ubuntu-raspbian)
+[Caddy Debian/Ubuntu package](https://caddyserver.com/docs/install#debian-ubuntu)
 documentation.
 
 Project rendering generates artifacts without changing SQLite, Docker, or Caddy

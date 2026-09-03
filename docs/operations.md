@@ -445,7 +445,7 @@ in `/etc/omurga/monitoring/grafana-admin-password`.
 For direct LAN access, choose an explicit address:
 
 ```bash
-sudo omurga monitoring install --bind-address 192.168.0.50
+sudo omurga monitoring install --bind-address 192.0.2.10
 ```
 
 Remove the stack while preserving its time series and Grafana data, or purge
@@ -502,13 +502,13 @@ Remote execution uses SSH and runs the Omurga binary on the target host. The
 binary must already be installed there:
 
 ```bash
-omurga host add pi 192.168.0.50 \
-  --user mehmet --identity ~/.ssh/id_ed25519
+omurga host add production 203.0.113.10 \
+  --user deploy --identity ~/.ssh/id_ed25519
 omurga host list
-omurga host show pi
-omurga --host pi doctor
-omurga --host pi monitoring status
-omurga --host pi --dry-run host update
+omurga host show production
+omurga --host production doctor
+omurga --host production monitoring status
+omurga --host production --dry-run host update
 ```
 
 Remote commands use non-interactive `sudo` by default. If the remote user does
@@ -518,5 +518,5 @@ shells and followed logs allocate a terminal automatically.
 Remove a local profile with:
 
 ```bash
-omurga host remove pi
+omurga host remove production
 ```

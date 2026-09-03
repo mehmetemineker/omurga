@@ -173,7 +173,7 @@ automatic rollback. You can explicitly return to the previous artifacts:
 sudo omurga --env production project rollback ./blog
 ```
 
-## A Raspberry Pi image does not start
+## An ARM64 image does not start
 
 Confirm the architecture and inspect the image with Docker:
 
@@ -282,7 +282,7 @@ If direct LAN access is required, update the stack with an explicit bind
 address and protect the ports with the host firewall:
 
 ```bash
-sudo omurga monitoring install --bind-address 192.168.0.50
+sudo omurga monitoring install --bind-address 192.0.2.10
 ```
 
 ## Collect a support report

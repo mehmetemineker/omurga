@@ -13,7 +13,7 @@ its distribution, package manager, and service manager.
 
 ## Scenario
 
-On a Raspberry Pi, run this before installing anything:
+Run this before installing anything on a new host:
 
 ```bash
 omurga host detect

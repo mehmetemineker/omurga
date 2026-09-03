@@ -16,5 +16,5 @@ omurga project list
 omurga project list --json
 ```
 
-This reads the local Omurga state database. Use `--host pi` to query the state
+This reads the local Omurga state database. Use `--host production` to query the state
 database on a configured remote host.

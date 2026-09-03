@@ -39,7 +39,7 @@ sudo omurga project deploy ./demo
 sudo omurga project status ./demo
 ```
 
-For a Raspberry Pi, download the `arm64` release asset. For Intel or AMD
+For an `arm64` host, download the `arm64` release asset. For Intel or AMD
 servers, download the `amd64` asset. The [Getting started guide](getting-started.md)
 walks through installation and the first deployment.
 
@@ -69,7 +69,7 @@ purge flag.
 
 ## Documentation map
 
-- [Getting started](getting-started.md) — installation, host initialization, first project, and Pi workflow.
+- [Getting started](getting-started.md) — installation, host initialization, first project, and ARM64 workflow.
 - [Deploy a project end to end](deploy-a-project.md) — one complete Linux-to-production deployment walkthrough.
 - [Projects and environments](projects.md) — manifests, overlays, secrets, deployment, Caddy, PostgreSQL, and Redis.
 - [Operations](operations.md) — backups, alerts, monitoring, registries, shared services, and remote hosts.

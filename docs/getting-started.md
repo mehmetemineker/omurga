@@ -7,7 +7,7 @@ description: Install Omurga on Debian or Ubuntu and deploy your first Docker pro
 # Getting started
 
 This guide takes you from a clean Debian or Ubuntu host to a running Omurga
-project. The same workflow works on a Raspberry Pi running 64-bit Debian.
+project on a supported Debian or Ubuntu host.
 
 ## Requirements
 
@@ -44,7 +44,7 @@ The automatic installer supports `arm64` and `amd64`. The explicit download
 commands below are useful when a specific release must be pinned.
 
 ```bash
-# Raspberry Pi and other 64-bit ARM hosts
+# 64-bit ARM hosts
 curl -fL -o /tmp/omurga.deb \
   "https://github.com/mehmetemineker/omurga/releases/download/v0.2.0/omurga_0.2.0_arm64.deb"
 
@@ -154,9 +154,9 @@ curl -i -H 'Host: demo.localhost' http://127.0.0.1
 For a public domain, configure DNS and set `https: true` in the environment
 overlay. See [Projects and environments](projects.md).
 
-## Raspberry Pi workflow
+## ARM64 workflow
 
-On a 64-bit Raspberry Pi running Debian:
+On a 64-bit ARM Debian host:
 
 ```bash
 dpkg --print-architecture   # should be arm64
@@ -164,9 +164,8 @@ sudo omurga host init
 sudo omurga doctor
 ```
 
-The monitoring stack is optional and uses four containers. On a Pi 3, start
-with the default host monitoring alerts and install Prometheus/Grafana only if
-you have enough memory and disk:
+The monitoring stack is optional and uses four containers. Install
+Prometheus/Grafana only if the host has enough memory and disk:
 
 ```bash
 sudo omurga monitoring install

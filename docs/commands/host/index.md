@@ -6,8 +6,8 @@ description: Provision and maintain a supported Debian or Ubuntu host.
 
 # Host commands
 
-Use these commands when preparing a Debian or Ubuntu server, Raspberry Pi, or
-remote Linux machine for Omurga.
+Use these commands when preparing a Debian or Ubuntu server or another
+supported remote Linux machine for Omurga.
 
 | Goal | Command |
 | --- | --- |

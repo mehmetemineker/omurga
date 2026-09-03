@@ -72,8 +72,8 @@ the selected parent directory. It refuses to overwrite an existing project:
 
 ```bash
 omurga ai create \
-  "Create a production project named lixy using ghcr.io/acme/lixy:2.0.0. \
-   The app listens on port 3000, uses lixy.be with HTTPS, PostgreSQL, Redis, \
+  "Create a production project named demo using ghcr.io/example/demo:2.0.0. \
+   The app listens on port 3000, uses demo.example.com with HTTPS, PostgreSQL, Redis, \
    daily backups, and a /health endpoint." \
   --directory ~/omurga-lab \
   --api-key-file ~/.config/omurga/llm-api-key
@@ -83,14 +83,14 @@ Override the name returned by the model when needed:
 
 ```bash
 omurga ai create "Deploy the application described in this request" \
-  --name lixy \
+  --name demo \
   --directory ~/omurga-lab
 ```
 
 Review and validate the generated files before deployment:
 
 ```bash
-cd ~/omurga-lab/lixy
+cd ~/omurga-lab/demo
 omurga --env production project show .
 omurga --env production project validate .
 omurga --env production project render . --kind compose

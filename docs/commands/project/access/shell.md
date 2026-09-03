@@ -12,7 +12,7 @@ You need interactive investigation inside a running service.
 
 ```bash
 sudo omurga project shell ./demo app
-omurga --host pi project shell ./demo app
+omurga --host production project shell ./demo app
 ```
 
 Omurga starts `/bin/sh` and allocates a TTY for a remote SSH execution. Exit

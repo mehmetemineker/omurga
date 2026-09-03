@@ -15,13 +15,13 @@ Remote profiles are stored locally and contain SSH connection metadata.
 | Inspect a profile | [host show](show/) |
 | Remove a profile | [host remove](remove/) |
 
-## Scenario: Raspberry Pi control from a workstation
+## Scenario: Remote host control from a workstation
 
 ```bash
-omurga host add pi 192.168.0.50 --user mehmet --identity ~/.ssh/id_ed25519
+omurga host add production 203.0.113.10 --user deploy --identity ~/.ssh/id_ed25519
 omurga host list
-omurga --host pi doctor
-omurga --host pi project status ./demo
+omurga --host production doctor
+omurga --host production project status ./demo
 ```
 
 The Omurga binary must already be installed on the remote host.

@@ -7,8 +7,8 @@ description: Add or update an SSH host profile.
 # `omurga host add`
 
 ```bash
-omurga host add pi 192.168.0.50 \
-  --user mehmet --identity ~/.ssh/id_ed25519
+omurga host add production 203.0.113.10 \
+  --user deploy --identity ~/.ssh/id_ed25519
 omurga host add production 203.0.113.10 --user deploy --port 2222
 ```
 

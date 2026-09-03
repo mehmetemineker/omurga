@@ -24,7 +24,7 @@ Download the fixed v0.2.0 release package matching the host architecture:
 ```bash
 dpkg --print-architecture
 
-# Use arm64 for a 64-bit Raspberry Pi or another ARM64 host.
+# Use arm64 for a compatible 64-bit ARM host.
 curl -fL -o /tmp/omurga.deb \
   "https://github.com/mehmetemineker/omurga/releases/download/v0.2.0/omurga_0.2.0_arm64.deb"
 

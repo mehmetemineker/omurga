@@ -8,7 +8,7 @@ description: Open an interactive PostgreSQL shell.
 
 ```bash
 sudo omurga postgres shell ./demo
-sudo omurga --host pi postgres shell ./demo --instance primary
+sudo omurga --host production postgres shell ./demo --instance primary
 ```
 
 Exit with `\q` or `Ctrl-D`. The remote command allocates a TTY.
