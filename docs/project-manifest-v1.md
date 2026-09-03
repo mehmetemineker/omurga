@@ -50,6 +50,31 @@ gateway:
       https: true
 ```
 
+Routes can manage response headers at the Caddy edge. `remove` deletes headers
+from both the upstream response and the final Caddy response. `set` adds or
+replaces response headers:
+
+```yaml
+gateway:
+  routes:
+    - domain: preview.example.com
+      service: app
+      port: 3000
+      https: true
+      responseHeaders:
+        remove:
+          - Server
+          - Via
+        set:
+          X-Robots-Tag: "noindex, nofollow, noarchive, nosnippet"
+```
+
+Header names must be valid HTTP header names. Header values cannot contain
+carriage returns or line feeds. `X-Robots-Tag` is useful for preview and
+staging environments, but it is not an access control mechanism; use
+authentication, an IP allowlist, or a private network when the environment
+must not be publicly accessible.
+
 Local names such as `.localhost`, `.local`, and `.internal` do not qualify for
 public certificates. Use `https: false` for local HTTP-only testing.
 

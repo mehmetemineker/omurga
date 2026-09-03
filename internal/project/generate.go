@@ -296,10 +296,34 @@ func renderCaddy(project manifest.Project, options RenderOptions) ([]byte, error
 			}
 		}
 		builder.WriteString("    encode zstd gzip\n")
-		fmt.Fprintf(&builder, "    reverse_proxy 127.0.0.1:%d\n", hostPort)
+		writeCaddyResponseHeaders(&builder, route.ResponseHeaders)
+		fmt.Fprintf(&builder, "    reverse_proxy 127.0.0.1:%d", hostPort)
+		if len(route.ResponseHeaders.Remove) > 0 {
+			builder.WriteString(" {\n")
+			for _, name := range route.ResponseHeaders.Remove {
+				fmt.Fprintf(&builder, "        header_down -%s\n", name)
+			}
+			builder.WriteString("    }\n")
+		} else {
+			builder.WriteString("\n")
+		}
 		builder.WriteString("}\n\n")
 	}
 	return []byte(builder.String()), nil
+}
+
+func writeCaddyResponseHeaders(builder *strings.Builder, headers manifest.ResponseHeaders) {
+	if len(headers.Remove) == 0 && len(headers.Set) == 0 {
+		return
+	}
+	builder.WriteString("    header {\n")
+	for _, name := range headers.Remove {
+		fmt.Fprintf(builder, "        -%s\n", name)
+	}
+	for _, name := range sortedKeys(headers.Set) {
+		fmt.Fprintf(builder, "        %s %s\n", name, strconv.Quote(headers.Set[name]))
+	}
+	builder.WriteString("    }\n")
 }
 
 func composePullPolicy(policy string) string {

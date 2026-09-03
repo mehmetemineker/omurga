@@ -103,4 +103,44 @@ func TestGenerateAddsACMEEmailForHTTPSRoute(t *testing.T) {
 	}
 }
 
+func TestGenerateAddsRouteResponseHeaders(t *testing.T) {
+	project := manifest.Project{
+		Version: 1,
+		Name:    "demo",
+		Services: map[string]manifest.Service{
+			"app": {Image: "nginx:alpine", Expose: []int{8080}},
+		},
+		Gateway: manifest.Gateway{Routes: []manifest.Route{{
+			Domain:  "preview.example.com",
+			Service: "app",
+			Port:    8080,
+			HTTPS:   boolPointer(false),
+			ResponseHeaders: manifest.ResponseHeaders{
+				Remove: []string{"Server", "Via"},
+				Set: map[string]string{
+					"X-Robots-Tag": "noindex, nofollow, noarchive, nosnippet",
+				},
+			},
+		}}},
+	}
+
+	artifacts, err := Generate(project, DefaultRenderOptions(project, "preview"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(artifacts.Caddy)
+	for _, expected := range []string{
+		"header {",
+		"-Server",
+		"-Via",
+		`X-Robots-Tag "noindex, nofollow, noarchive, nosnippet"`,
+		"header_down -Server",
+		"header_down -Via",
+	} {
+		if !strings.Contains(content, expected) {
+			t.Fatalf("generated Caddy config does not contain %q:\n%s", expected, content)
+		}
+	}
+}
+
 func boolPointer(value bool) *bool { return &value }

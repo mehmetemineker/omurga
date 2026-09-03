@@ -64,10 +64,16 @@ type Gateway struct {
 }
 
 type Route struct {
-	Domain  string `yaml:"domain" json:"domain"`
-	Service string `yaml:"service" json:"service"`
-	Port    int    `yaml:"port" json:"port"`
-	HTTPS   *bool  `yaml:"https,omitempty" json:"https,omitempty"`
+	Domain          string          `yaml:"domain" json:"domain"`
+	Service         string          `yaml:"service" json:"service"`
+	Port            int             `yaml:"port" json:"port"`
+	HTTPS           *bool           `yaml:"https,omitempty" json:"https,omitempty"`
+	ResponseHeaders ResponseHeaders `yaml:"responseHeaders,omitempty" json:"responseHeaders,omitempty"`
+}
+
+type ResponseHeaders struct {
+	Remove []string          `yaml:"remove,omitempty" json:"remove,omitempty"`
+	Set    map[string]string `yaml:"set,omitempty" json:"set,omitempty"`
 }
 
 type Dependency struct {

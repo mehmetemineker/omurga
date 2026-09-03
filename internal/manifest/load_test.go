@@ -109,6 +109,28 @@ func TestValidateRejectsRouteToUnknownService(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnsafeResponseHeader(t *testing.T) {
+	err := Validate(Project{
+		Version: 1,
+		Name:    "blog",
+		Services: map[string]Service{
+			"app": {Image: "example/blog:1", Expose: []int{3000}},
+		},
+		Gateway: Gateway{Routes: []Route{{
+			Domain:  "blog.example.com",
+			Service: "app",
+			Port:    3000,
+			ResponseHeaders: ResponseHeaders{Set: map[string]string{
+				"X-Bad Header": "value",
+				"X-Newline":    "line1\nline2",
+			}},
+		}}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "must be a valid HTTP header name") || !strings.Contains(err.Error(), "must not contain carriage returns or line feeds") {
+		t.Fatalf("expected unsafe response header errors, got: %v", err)
+	}
+}
+
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(strings.TrimSpace(content)+"\n"), 0o600); err != nil {

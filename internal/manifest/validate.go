@@ -153,6 +153,21 @@ func Validate(project Project) error {
 		if !containsPort(service.Expose, route.Port) {
 			add(path+".port", "must be present in the service expose list")
 		}
+		for headerIndex, name := range route.ResponseHeaders.Remove {
+			if !validHeaderName(name) {
+				add(fmt.Sprintf("%s.responseHeaders.remove[%d]", path, headerIndex), "must be a valid HTTP header name")
+			}
+		}
+		for name, value := range route.ResponseHeaders.Set {
+			if !validHeaderName(name) {
+				add(fmt.Sprintf("%s.responseHeaders.set.%s", path, name), "must be a valid HTTP header name")
+			}
+			if strings.TrimSpace(value) == "" {
+				add(fmt.Sprintf("%s.responseHeaders.set.%s", path, name), "must not be empty")
+			} else if strings.ContainsAny(value, "\r\n") {
+				add(fmt.Sprintf("%s.responseHeaders.set.%s", path, name), "must not contain carriage returns or line feeds")
+			}
+		}
 	}
 
 	dependencyNames := sortedKeys(project.Dependencies)
@@ -208,6 +223,21 @@ func Validate(project Project) error {
 		return &ValidationError{Issues: issues}
 	}
 	return nil
+}
+
+func validHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, character := range []byte(name) {
+		switch {
+		case character >= 'a' && character <= 'z', character >= 'A' && character <= 'Z', character >= '0' && character <= '9':
+		case character == '!' || character == '#' || character == '$' || character == '%' || character == '&' || character == '\'' || character == '*' || character == '+' || character == '-' || character == '.' || character == '^' || character == '_' || character == '`' || character == '|' || character == '~':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func sortedKeys[T any](values map[string]T) []string {

@@ -161,6 +161,8 @@ The v1 implementation includes:
 - project scaffold generation and strict environment overlays
 - deterministic Docker Compose and Caddy artifact rendering
 - loopback-only gateway port publishing
+- route-level Caddy response header controls, including header removal and
+  `X-Robots-Tag` support for preview environments
 - a versioned SQLite state database with read-only dry-run access
 - stable, transaction-safe gateway port allocation across all projects
 - project deploy, status, logs, restart, stop, rollback, and delete operations

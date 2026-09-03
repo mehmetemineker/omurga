@@ -252,6 +252,67 @@ gateway:
       https: true
 ```
 
+### Route response headers
+
+Response headers are configured per gateway route. This is useful when a
+preview route must hide proxy headers and prevent search engine indexing:
+
+```yaml
+gateway:
+  email: ops@example.com
+  routes:
+    - domain: preview.blog.example.com
+      service: app
+      port: 3000
+      https: true
+      responseHeaders:
+        remove:
+          - Server
+          - Via
+        set:
+          X-Robots-Tag: "noindex, nofollow, noarchive, nosnippet"
+```
+
+`remove` is applied to headers returned by the upstream service and to the
+final Caddy response. `set` writes the configured response headers. Header
+values are quoted safely in the generated Caddyfile, and values containing
+carriage returns or line feeds are rejected during validation.
+
+Environment overlays replace the complete `gateway.routes` list. Therefore,
+when adding headers to only the preview environment, define the complete
+preview route in `environments/preview.yaml`:
+
+```yaml
+services:
+  app:
+    image: ghcr.io/example/blog:preview
+
+gateway:
+  email: ops@example.com
+  routes:
+    - domain: preview.blog.example.com
+      service: app
+      port: 3000
+      https: true
+      responseHeaders:
+        remove: [Server, Via]
+        set:
+          X-Robots-Tag: "noindex, nofollow, noarchive, nosnippet"
+```
+
+Validate and deploy the selected environment:
+
+```bash
+omurga --env preview project validate ./blog
+sudo omurga --env preview project render ./blog --kind caddy
+sudo omurga --env preview project deploy ./blog
+curl -I https://preview.blog.example.com
+```
+
+`X-Robots-Tag` discourages indexing but does not protect the application from
+visitors. Add authentication or network restrictions when preview content is
+private.
+
 Check the gateway independently:
 
 ```bash
