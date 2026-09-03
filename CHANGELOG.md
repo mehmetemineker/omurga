@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1
+
+### Added
+
+- Route-level Caddy response header controls with upstream header removal and
+  configurable response headers such as `X-Robots-Tag`.
+
+### Changed
+
+- Documentation examples now use generic project, domain, host, and architecture
+  values instead of device-specific examples.
+
 ## 0.2.0
 
 ### Added

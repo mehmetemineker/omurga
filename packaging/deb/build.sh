@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${1:-0.2.0}"
+VERSION="${1:-0.2.1}"
 ARCHES="${OMURGA_DEB_ARCHES:-amd64 arm64}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIST_DIR="${ROOT_DIR}/dist"
